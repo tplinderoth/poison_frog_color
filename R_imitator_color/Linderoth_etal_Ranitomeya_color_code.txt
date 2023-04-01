@@ -1,0 +1,1226 @@
+### README_SITES_290421 ###
+
+## generate all-sites VCF
+
+$ bcftools mpileup -b /space/s2/diana/Rimitator/all_morphs_imi_model.bamlist -f /space/s1/linderoth/imitator/spades/ref/imi_combined_targetedAndflanking_geneid.fasta -d 100000000 -Q 0 -a AD,DP,SP,INFO/ADF,INFO/ADR -L 100000000 | bcftools call -c -A --ploidy-file /home/tyler/imi_qc/imi_combined_targetedAndflanking_geneid_ploidy.txt -f GQ -O z > /media/external4/imi_model_qc/imi_model_allsites.vcf.gz
+
+$ /space/s2/diana/Rimitator/sites_290421/scripts/annotateVCF.pl --BandMisMap /space/s1/linderoth/imitator/spades/qc/ngsParalog/imi_banded_mismaplr.txt --StripeMisMap /space/s1/linderoth/imitator/spades/qc/ngsParalog/imi_striped_mismaplr.txt --AdmixMisMap /space/s1/linderoth/imitator/spades/qc/ngsParalog/imi_admix_mismaplr.txt --nsample /home/tyler/imi_qc/imi_model_popfile.txt /media/external4/imi_model_qc/imi_model_allsites.vcf.gz | bcftools +fill-tags -O z -o /media/external4/imi_model_qc/imi_model_allsites_annotated.vcf.gz -- -t 'AN,AC,AF,MAF,AC_Hom,AC_Het,ExcHet,TYPE'
+
+# site coverage (DP) percentiles from VCF
+# Technically this is coverage from a previously generated VCF (used to to make the sites_17092020 list)
+# The only difference in the VCF generation is that the current version used the '-A' option to bcftools call,
+# so the coverage should be the same.
+  50%   10%   20%   30%   40%   50%   60%   70%   80%   90%   95%   99%
+  608    42   105   206   363   608   989  1570  2472  4005  5609 10770
+
+# quantile for DP=20000: 0.9976577
+
+# ngsParalog quantiles
+
+# striped
+          5%          10%          20%          30%          40%          50% 
+  0.00000000   0.00000000   0.00000000   0.07703296   0.56983893   1.47881584 
+         60%          70%          80%          90%          91%          92% 
+  3.03272876   5.88646036  12.34629931  37.92455298  44.86602303  53.11894165 
+         93%          94%          95%          96%          97%          98% 
+ 65.44404836  83.45197976 110.35497980 153.62160683 226.59616016 370.18828006
+     99% 
+760.4215
+
+# stripe ngsParalog LR 500 quantile = 0.9846569
+
+# banded
+          5%          10%          20%          30%          40%          50% 
+0.000000e+00 0.000000e+00 0.000000e+00 3.154465e-02 5.383386e-01 1.630236e+00 
+         60%          70%          80%          90%          91%          92% 
+3.728900e+00 8.259541e+00 2.192985e+01 8.637067e+01 1.037647e+02 1.258135e+02 
+         93%          94%          95%          96%          97%          98% 
+1.551504e+02 1.955357e+02 2.505123e+02 3.324719e+02 4.653473e+02 7.146240e+02 
+         99% 
+1.343584e+03
+
+# band ngsParalog LR 500 quantile = 0.9718976
+
+# admix
+         5%         10%         20%         30%         40%         50% 
+  0.0000000   0.0000000   0.0000000   0.1188810   0.7069725   1.7724152 
+        60%         70%         80%         90%         91%         92% 
+  3.6400889   7.3601269  16.4656753  54.2680182  63.6369388  75.7514018 
+        93%         94%         95%         96%         97%         98% 
+ 90.4804849 111.3477723 141.7060989 190.3859018 277.2487148 454.7146132 
+        99% 
+952.3973033
+
+# admix ngsParalog LR 500 quantile = 0.9815623
+
+
+## filter sites
+
+# make 3 sets that differ in their stringency of missing data among model species
+# all other filtering parameters are the same between the two sets.
+
+# Spades assembly spanning sites 1-6697 on contig10440_combined_atp12a was an extremely close
+# blast match (evalue 0) to Dendrobates tinctorius mitochondrial genome and had large ngsParalog
+# values suggesting mapping problems (possible nupt). This region also aligns to a different 
+# scaffold, 57351, versus the other atp12a assemblies which align to scaffold 2714 in the imitator
+# genome. It is unlikely that sites 1-6697 uniquely represent atp12a and so have been masked.
+
+workdir='/space/s2/diana/Rimitator/sites_290421'
+
+# set1: No coverage requirements among model species (maximizes number of SNPs for GWAS)
+$ ./scripts/purgeMultiAllele.pl /media/external4/imi_model_qc/imi_model_allsites_annotated.vcf.gz /space/s1/linderoth/imitator/spades/ref/imi_combined_targetedAndflanking_geneid.fasta | bcftools view -T ^/space/s2/diana/Rimitator/sites_290421/exclude_sites.bed -i 'N_PASS(FMT/DP[0-32] > 2) > 14 && N_PASS(FMT/DP[33-65] > 2) > 14 && N_PASS(FMT/DP[66-123] > 2) > 14' | bcftools view -e 'INFO/BandMisMap > 500 || INFO/StripeMisMap > 500 || INFO/AdmixMisMap > 500 || INDEL=1 || INFO/MQ < 30 || INFO/DP > 20000 || INFO/PV4[0] < 1e-100 || INFO/PV4[1] < 1e-100 || INFO/PV4[2] < 1e-100 || INFO/PV4[3] < 1e-100 || INFO/ExcHet < 1e-3' -M 2 | bcftools query -f "%CHROM\t%POS\n" > /space/s2/diana/Rimitator/sites_290421/imi_model_allsites_set1.pos
+
+# set2: Require at least 1 model individual to have data (balances ability to test for selection/introgression and SNP density, use for imitator popgen)
+$ ./scripts/purgeMultiAllele.pl /media/external4/imi_model_qc/imi_model_allsites_annotated.vcf.gz /space/s1/linderoth/imitator/spades/ref/imi_combined_targetedAndflanking_geneid.fasta | bcftools view -T ^/space/s2/diana/Rimitator/sites_290421/exclude_sites.bed -i 'N_PASS(FMT/DP[0-32] > 2) > 14 && N_PASS(FMT/DP[33-65] > 2) > 14 && N_PASS(FMT/DP[66-123] > 2) > 14 && N_PASS(FMT/DP[124-128] > 0) >= 1' | bcftools view -e 'INFO/BandMisMap > 500 || INFO/StripeMisMap > 500 || INFO/AdmixMisMap > 500 || INDEL=1 || INFO/MQ < 30 || INFO/DP > 20000 || INFO/PV4[0] < 1e-100 || INFO/PV4[1] < 1e-100 || INFO/PV4[2] < 1e-100 || INFO/PV4[3] < 1e-100 || INFO/ExcHet < 1e-3' -M 2 | bcftools query -f "%CHROM\t%POS\n" > /space/s2/diana/Rimitator/sites_290421/imi_model_allsites_set2.pos
+
+# set3: Require all model individuals to have data (trees and popgen characterizing species relationships which are sensitive to missing data among models) 
+$ ./scripts/purgeMultiAllele.pl /media/external4/imi_model_qc/imi_model_allsites_annotated.vcf.gz /space/s1/linderoth/imitator/spades/ref/imi_combined_targetedAndflanking_geneid.fasta | bcftools view -T ^/space/s2/diana/Rimitator/sites_290421/exclude_sites.bed -i 'N_PASS(FMT/DP[0-32] > 2) > 14 && N_PASS(FMT/DP[33-65] > 2) > 14 && N_PASS(FMT/DP[66-123] > 2) > 14 && N_PASS(FMT/DP[124-128] > 0) == 5' | bcftools view -e 'INFO/BandMisMap > 500 || INFO/StripeMisMap > 500 || INFO/AdmixMisMap > 500 || INDEL=1 || INFO/MQ < 30 || INFO/DP > 20000 || INFO/PV4[0] < 1e-100 || INFO/PV4[1] < 1e-100 || INFO/PV4[2] < 1e-100 || INFO/PV4[3] < 1e-100 || INFO/ExcHet < 1e-3' -M 2 | bcftools query -f "%CHROM\t%POS\n" > /space/s2/diana/Rimitator/sites_290421/imi_model_allsites_set3.pos
+
+# Generate one set of filtered sites exactly as for set 1 except increase the coverage requirements among the
+# imitator individuals. This 'set1strict' set will be used to demonstrate how the low frequency categories of the
+# SFS are sensitive to sparse data across individuals, thus justifying our minmaf conditioning. This set requires
+# 95% of the individuals in each imitator population to have at least 4X coverage. set1strict:
+$ ./scripts/purgeMultiAllele.pl /media/external4/imi_model_qc/imi_model_allsites_annotated.vcf.gz /space/s1/linderoth/imitator/spades/ref/imi_combined_targetedAndflanking_geneid.fasta | bcftools view -T ^/space/s2/diana/Rimitator/sites_290421/exclude_sites.bed -i 'N_PASS(FMT/DP[0-32] > 3) >= 31 && N_PASS(FMT/DP[33-65] > 3) >= 31 && N_PASS(FMT/DP[66-123] > 3) >= 55' | bcftools view -e 'INFO/BandMisMap > 500 || INFO/StripeMisMap > 500 || INFO/AdmixMisMap > 500 || INDEL=1 || INFO/MQ < 30 || INFO/DP > 20000 || INFO/PV4[0] < 1e-100 || INFO/PV4[1] < 1e-100 || INFO/PV4[2] < 1e-100 || INFO/PV4[3] < 1e-100 || INFO/ExcHet < 1e-3' -M 2 | bcftools query -f "%CHROM\t%POS\n" > /space/s2/diana/Rimitator/sites_290421/imi_model_allsites_set1strict.pos
+
+
+## Generate frequency spectrum for each imitator population on QC all-sites
+
+# folded SFS for each imitator population separately
+/space/s2/diana/Rimitator/sites_290421/scripts/batch_qc_sfs.sh
+
+# folded SAF for all imitator (banded + stiped + admixed) combined
+workdir='/space/s2/diana/Rimitator/sites_290421'
+
+$ ~/install/angsd/angsd -bam /space/s2/diana/Rimitator/all_morphs_imi.bamlist -sites imi_model_allsites_set1.pos -rf imi_model_allsites_set1.rf -GL 1 -doSaf 1 -fold 1 -minQ 20 -minMapQ 20 -anc /space/s1/linderoth/imitator/spades/ref/imi_combined_targetedAndflanking_geneid.fasta -out ./sfs/all_imi_allsites_set1 -P 4
+$ ~/install/angsd/misc/realSFS ./sfs/all_imi_allsites_set1.saf.idx > ./sfs/all_imi_allsites_set1.sfs
+$ ~/install/angsd/misc/realSFS print ./sfs/all_imi_allsites_set1.saf.idx | gzip > ./sfs/all_imi_allsites_set1.saf.txt.gz
+
+$ ~/install/angsd/angsd -bam /space/s2/diana/Rimitator/all_morphs_imi.bamlist -sites imi_model_allsites_set2.pos -rf imi_model_allsites_set2.rf -GL 1 -doSaf 1 -fold 1 -minQ 20 -minMapQ 20 -anc /space/s1/linderoth/imitator/spades/ref/imi_combined_targetedAndflanking_geneid.fasta -out ./sfs/all_imi_allsites_set2 -P 4
+$ ~/install/angsd/misc/realSFS ./sfs/all_imi_allsites_set2.saf.idx > ./sfs/all_imi_allsites_set2.sfs
+$ ~/install/angsd/misc/realSFS print ./sfs/all_imi_allsites_set2.saf.idx | gzip > ./sfs/all_imi_allsites_set2.saf.txt.gz
+
+$ ~/install/angsd/angsd -bam /space/s2/diana/Rimitator/all_morphs_imi.bamlist -sites imi_model_allsites_set3.pos -rf imi_model_allsites_set3.rf -GL 1 -doSaf 1 -fold 1 -minQ 20 -minMapQ 20 -anc /space/s1/linderoth/imitator/spades/ref/imi_combined_targetedAndflanking_geneid.fasta -out ./sfs/all_imi_allsites_set3 -P 4
+$ ~/install/angsd/misc/realSFS ./sfs/all_imi_allsites_set3.saf.idx > ./sfs/all_imi_allsites_set3.sfs
+$ ~/install/angsd/misc/realSFS print ./sfs/all_imi_allsites_set3.saf.idx | gzip > ./sfs/all_imi_allsites_set3.saf.txt.gz
+
+# folded SFS for checking effect of missing data
+$ ~/install/angsd/angsd -bam /space/s2/diana/Rimitator/all_morphs_imi.bamlist -sites imi_model_allsites_set1strict.pos -rf imi_model_allsites_set1strict.rf -GL 1 -doSaf 1 -fold 1 -minQ 20 -minMapQ 20 -anc /space/s1/linderoth/imitator/spades/ref/imi_combined_targetedAndflanking_geneid.fasta -out ./sfs/all_imi_allsites_set1strict -P 4
+$ ~/install/angsd/misc/realSFS ./sfs/all_imi_allsites_set1strict.saf.idx > ./sfs/all_imi_allsites_set1strict.sfs
+
+# Take subset of filtered all-sites sets 1, 2, and 3 that have a MAF of 2% among imitator, which ensures that any site among this 
+# conditional minmaf set encompasses only the reliable portion of the SFS in the imitator populations AND at least one model individual
+# will have data. If I take a 2% minmaf subset based on all imitator + models this excludes fixed differences between summersi and all other
+# species, thus introducing an undesirable bias. A minimum maf of 2% among imitator corresponds to approximately 5 minor alleles
+# in the sample (5/248 = 0.0201). I filter for MAF based on the per site allele frequency likelihoods for all imitator combined, whereby I
+# retain sites which have a maximum likelihood for the 0 or 5-n categories of the SFS (categories with max likelihood in the 1-4 categories
+# are removed).
+
+workdir='/space/s2/diana/Rimitator/sites_290421'
+
+$ ./scripts/filtersaf.pl 5 imi_model_allsites_set1.rf ./sfs/all_imi_allsites_set1.saf.txt.gz > imi_model_allsites_minmaf2_set1.pos
+
+$ ./scripts/filtersaf.pl 5 imi_model_allsites_set2.rf ./sfs/all_imi_allsites_set2.saf.txt.gz > imi_model_allsites_minmaf2_set2.pos
+
+$ ./scripts/filtersaf.pl 5 imi_model_allsites_set3.rf ./sfs/all_imi_allsites_set3.saf.txt.gz > imi_model_allsites_minmaf2_set3.pos
+
+# subsets of the imitator 2% minmaf all-sites position files that includes only the nuclear genome
+
+workdir='/space/s1/tyler/imitator/sites_290421'
+
+$ grep -v contig13298_combined_CYTB imi_model_allsites_minmaf2_set1.pos > imi_model_allsites_minmaf2_set1_nuclear.pos
+
+$ grep -v contig13298_combined_CYTB imi_model_allsites_minmaf2_set2.pos > imi_model_allsites_minmaf2_set2_nuclear.pos
+
+$ grep -v contig13298_combined_CYTB imi_model_allsites_minmaf2_set3.pos > imi_model_allsites_minmaf2_set3_nuclear.pos
+
+## called SNPs on the three sets of quality-filtered all-sites
+
+workdir='/space/s2/diana/Rimitator/sites_290421'
+
+# set 1: Call variable sites among imitator only.
+# SNPs for all imitator subsets were called on the same set1 allsites list that had
+# variable sites with a MAF <2% among all imitator removed.
+
+# Call SNPs that are segregating between the striped and banded morphs
+$ ~/install/angsd/angsd -bam /space/s1/linderoth/imitator/spades/imitator_divergence_bams.txt -GL 1 -doMajorMinor 1 -doMaf 1 -SNP_pval 1e-6 -sites imi_model_allsites_minmaf2_set1.pos -rf imi_model_allsites_minmaf2_set1.rf -minQ 20 -minMapQ 20 -out ./snp_call/imi_divergence_snps_set1 -P 4
+$ zcat ./snp_call/imi_divergence_snps_set1.mafs.gz | tail -n+2 | cut -f1,2 > ./snp_call/imi_divergence_snps_set1.pos
+
+# create a version of the SNP file containing the major and minor alleles
+$ zcat ./snp_call/imi_divergence_snps_set1.mafs.gz | tail -n+2 | cut -f1,2,3,4 > ./snp_call/imi_divergence_snps_set1_alleles.pos
+
+# extract subset of striped+banded SNPs with minimum MAF of 5% for divergence GWAS
+$ ./scripts/maf2pos.pl ./snp_call/imi_divergence_snps_set1.mafs.gz 0.05 > ./snp_call/imi_divergence_snps_minmaf5_set1.pos
+
+# generate striped + banded imitator VCF for these SNP positions # SKIPPED THIS FOR sites_290421 ROUND -- VCF NOT NECESSARY
+workdir='/space/s2/diana/Rimitator/imitator_vcf'
+$ bcftools view -S band_stripe_samples.txt -a -T ../sites_17092020/snp_call/imi_divergence_snps_minmaf5_set1.pos imi_model_allsites_annotated2.vcf.gz | bcftools norm -m +any | bcftools view -m2 -M2 -e 'TYPE!="snp"' | bcftools +fill-tags -- -t 'AN,AC,AF,MAF,AC_Hom,AC_Het,ExcHet' | bgzip > imi_band_stripe_snps_minmaf5_set1.vcf.gz
+
+# Call SNPs that are variable within the admixed population
+$ ~/install/angsd/angsd -bam /space/s1/linderoth/imitator/spades/imitator_admixed_bams.txt -GL 1 -doMajorMinor 1 -doMaf 1 -SNP_pval 1e-6 -sites imi_model_allsites_minmaf2_set1.pos -rf imi_model_allsites_minmaf2_set1.rf -minQ 20 -minMapQ 20 -out ./snp_call/imi_admix_snps_set1 -P 4
+$ zcat ./snp_call/imi_admix_snps_set1.mafs.gz | tail -n+2 | cut -f1,2 > ./snp_call/imi_admix_snps_set1.pos
+
+# extract subset of admixed SNPs with a minimum MAF of 5% for admixture GWAS
+$ ./scripts/maf2pos.pl ./snp_call/imi_admix_snps_set1.mafs.gz 0.05 > ./snp_call/imi_admix_snps_minmaf5_set1.pos
+
+# Call SNPs that are variable within the banded population
+$ ~/install/angsd/angsd -bam /space/s1/linderoth/imitator/spades/imitator_banded_bams.txt -GL 1 -doMajorMinor 1 -doMaf 1 -SNP_pval 1e-6 -sites imi_model_allsites_minmaf2_set1.pos -rf imi_model_allsites_minmaf2_set1.rf -minQ 20 -minMapQ 20 -out ./snp_call/imi_band_snps_set1 -P 4
+$ zcat ./snp_call/imi_band_snps_set1.mafs.gz | tail -n+2 | cut -f1,2 > ./snp_call/imi_band_snps_set1.pos
+
+# Call SNPs that are variable within the striped population
+$ ~/install/angsd/angsd -bam /space/s1/linderoth/imitator/spades/imitator_striped_bams.txt -GL 1 -doMajorMinor 1 -doMaf 1 -SNP_pval 1e-6 -sites imi_model_allsites_minmaf2_set1.pos -rf imi_model_allsites_minmaf2_set1.rf -minQ 20 -minMapQ 20 -out ./snp_call/imi_stripe_snps_set1 -P 4
+$ zcat ./snp_call/imi_stripe_snps_set1.mafs.gz | tail -n+2 | cut -f1,2 > ./snp_call/imi_stripe_snps_set1.pos
+
+# Call SNPs that are variable among all imitator combined (banded + striped + admixed) 
+$ ~/install/angsd/angsd -bam /space/s2/diana/Rimitator/all_morphs_imi.bamlist -GL 1 -doMajorMinor 1 -doMaf 1 -SNP_pval 1e-6 -sites imi_model_allsites_minmaf2_set1.pos -rf imi_model_allsites_minmaf2_set1.rf -minQ 20 -minMapQ 20 -out ./snp_call/imi_minmaf2_set1 -P 4
+$ zcat ./snp_call/imi_minmaf2_set1.mafs.gz | tail -n+2 | cut -f1,2 > ./snp_call/imi_snps_minmaf2_set1.pos
+
+# for sets 2 and 3 call variable sites among imitator + models (avoid any ascertainment bias)
+
+# set 2
+$ ~/install/angsd/angsd -bam /space/s2/diana/Rimitator/all_morphs_imi_model.bamlist -GL 1 -doMajorMinor 1 -doMaf 1 -SNP_pval 1e-6 -sites imi_model_allsites_minmaf2_set2.pos -rf imi_model_allsites_minmaf2_set2.rf -minQ 20 -minMapQ 20 -out ./snp_call/imi_model_minmaf2_set2 -P 4
+$ zcat ./snp_call/imi_model_minmaf2_set2.mafs.gz | tail -n+2 | cut -f1,2 > ./snp_call/imi_model_snps_minmaf2_set2.pos
+
+# call SNPs among imitator to check that MAFs
+
+# set 3
+$ ~/install/angsd/angsd -bam /space/s2/diana/Rimitator/all_morphs_imi_model.bamlist -GL 1 -doMajorMinor 1 -doMaf 1 -SNP_pval 1e-6 -sites imi_model_allsites_minmaf2_set3.pos -rf imi_model_allsites_minmaf2_set3.rf -minQ 20 -minMapQ 20 -out ./snp_call/imi_model_minmaf2_set3 -P 4
+$ zcat ./snp_call/imi_model_minmaf2_set3.mafs.gz | tail -n+2 | cut -f1,2 > ./snp_call/imi_model_snps_minmaf2_set3.pos
+
+# call SNPs among subsets of only imitator using imi_model_allsites_minmaf2_set2.pos sites
+
+# all imitator
+angsd -b /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/imitator_all_bam_list.txt -GL 1 -doMajorMinor 1 -doMaf 1 -SNP_pval 1e-6 -sites /space/s2/diana/s2_copy_frogs/Rimitator/sites_290421/imi_model_allsites_minmaf2_set2.pos -rf /space/s2/diana/s2_copy_frogs/Rimitator/sites_290421/imi_model_allsites_minmaf2_set2.rf -minQ 20 -minMapQ 20 -out /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/snp_call/all_imi_minmaf2_set2_sites_snpcall
+
+# banded
+angsd -b /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/imitator_banded_bams.txt -GL 1 -doMajorMinor 1 -doMaf 1 -SNP_pval 1e-6 -sites /space/s2/diana/s2_copy_frogs/Rimitator/sites_290421/imi_model_allsites_minmaf2_set2.pos -rf /space/s2/diana/s2_copy_frogs/Rimitator/sites_290421/imi_model_allsites_minmaf2_set2.rf -minQ 20 -minMapQ 20 -out /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/snp_call/banded_minmaf2_set2_sites_snpcall
+
+# striped
+angsd -b /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/imitator_striped_bams.txt -GL 1 -doMajorMinor 1 -doMaf 1 -SNP_pval 1e-6 -sites /space/s2/diana/s2_copy_frogs/Rimitator/sites_290421/imi_model_allsites_minmaf2_set2.pos -rf /space/s2/diana/s2_copy_frogs/Rimitator/sites_290421/imi_model_allsites_minmaf2_set2.rf -minQ 20 -minMapQ 20 -out /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/snp_call/striped_minmaf2_set2_sites_snpcall
+
+# baned + striped
+angsd -b /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/imitator_divergence_bams.txt -GL 1 -doMajorMinor 1 -doMaf 1 -SNP_pval 1e-6 -sites /space/s2/diana/s2_copy_frogs/Rimitator/sites_290421/imi_model_allsites_minmaf2_set2.pos -rf /space/s2/diana/s2_copy_frogs/Rimitator/sites_290421/imi_model_allsites_minmaf2_set2.rf -minQ 20 -minMapQ 20 -out /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/snp_call/imi_divergence_minmaf2_set2_sites_snpcall
+
+## Estimate allele frequencies
+
+# set 2, imitator-wide minmaf 2%, all imitator (second line calculates LRT of SNP)
+angsd -b /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/imitator_all_bam_list.txt -GL 1 -doMajorMinor 1 -doMaf 1 -sites /space/s2/diana/s2_copy_frogs/Rimitator/sites_290421/imi_model_allsites_minmaf2_set2.pos -rf /space/s2/diana/s2_copy_frogs/Rimitator/sites_290421/imi_model_allsites_minmaf2_set2.rf -minQ 20 -minMapQ 20 -out /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/all_imi_minmaf2_set2_sites
+angsd -b /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/imitator_all_bam_list.txt -GL 1 -doMajorMinor 1 -doMaf 1 -SNP_pval 1 -sites /space/s2/diana/s2_copy_frogs/Rimitator/sites_290421/imi_model_allsites_minmaf2_set2.pos -rf /space/s2/diana/s2_copy_frogs/Rimitator/sites_290421/imi_model_allsites_minmaf2_set2.rf -minQ 20 -minMapQ 20 -out /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/all_imi_minmaf2_set2_sites_LRT
+
+# set 2, imitator-wide minmaf 2%, banded imitator (second line calculates LRT of SNP)
+angsd -b /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/imitator_banded_bams.txt -GL 1 -doMajorMinor 1 -doMaf 1 -sites /space/s2/diana/s2_copy_frogs/Rimitator/sites_290421/imi_model_allsites_minmaf2_set2.pos -rf /space/s2/diana/s2_copy_frogs/Rimitator/sites_290421/imi_model_allsites_minmaf2_set2.rf -minQ 20 -minMapQ 20 -out /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/banded_minmaf2_set2_sites
+angsd -b /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/imitator_banded_bams.txt -GL 1 -doMajorMinor 1 -doMaf 1 -SNP_pval 1 -sites /space/s2/diana/s2_copy_frogs/Rimitator/sites_290421/imi_model_allsites_minmaf2_set2.pos -rf /space/s2/diana/s2_copy_frogs/Rimitator/sites_290421/imi_model_allsites_minmaf2_set2.rf -minQ 20 -minMapQ 20 -out /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/banded_minmaf2_set2_sites_LRT
+
+# set 2, imitator-wide minmaf 2%, striped imitator (second line calculates LRT of SNP)
+angsd -b /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/imitator_striped_bams.txt -GL 1 -doMajorMinor 1 -doMaf 1 -sites /space/s2/diana/s2_copy_frogs/Rimitator/sites_290421/imi_model_allsites_minmaf2_set2.pos -rf /space/s2/diana/s2_copy_frogs/Rimitator/sites_290421/imi_model_allsites_minmaf2_set2.rf -minQ 20 -minMapQ 20 -out /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/striped_minmaf2_set2_sites
+angsd -b /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/imitator_striped_bams.txt -GL 1 -doMajorMinor 1 -doMaf 1 -SNP_pval 1 -sites /space/s2/diana/s2_copy_frogs/Rimitator/sites_290421/imi_model_allsites_minmaf2_set2.pos -rf /space/s2/diana/s2_copy_frogs/Rimitator/sites_290421/imi_model_allsites_minmaf2_set2.rf -minQ 20 -minMapQ 20 -out /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/striped_minmaf2_set2_sites_LRT
+
+# set 2, imitator-wide minmaf 2%, banded + striped imitator (second line calculates LRT of SNP)
+angsd -b /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/imitator_divergence_bams.txt -GL 1 -doMajorMinor 1 -doMaf 1 -sites /space/s2/diana/s2_copy_frogs/Rimitator/sites_290421/imi_model_allsites_minmaf2_set2.pos -rf /space/s2/diana/s2_copy_frogs/Rimitator/sites_290421/imi_model_allsites_minmaf2_set2.rf -minQ 20 -minMapQ 20 -out /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imi_divergence_minmaf2_set2_sites
+angsd -b /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/imitator_divergence_bams.txt -GL 1 -doMajorMinor 1 -doMaf 1 -SNP_pval 1 -sites /space/s2/diana/s2_copy_frogs/Rimitator/sites_290421/imi_model_allsites_minmaf2_set2.pos -rf /space/s2/diana/s2_copy_frogs/Rimitator/sites_290421/imi_model_allsites_minmaf2_set2.rf -minQ 20 -minMapQ 20 -out /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imi_divergence_minmaf2_set2_sites_LRT
+
+## Estimate allele frequencies for HKA test
+
+# Estimate the minor allele frequency among banded + striped imitator and the models as well as the probability that sites are SNPs (for HKA test)
+$ angsd -b /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/imitator_divergence_and_model_bams.txt -GL 1 -doMajorMinor 1 -doMaf 1 -SNP_pval 1 -sites /space/s2/diana/s2_copy_frogs/Rimitator/sites_290421/imi_model_allsites_minmaf2_set2.pos -rf /space/s2/diana/s2_copy_frogs/Rimitator/sites_290421/imi_model_allsites_minmaf2_set2.rf -minQ 20 -minMapQ 20 -out /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imi_band_stripe_models_minmaf2_set2_sites_LRT
+
+vari <- read.table('/space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/variabilis_minmaf2_set2_sites_LRT.mafs',head=TRUE)
+summer <- read.table('/space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/summersi_minmaf2_set2_sites_LRT.mafs',head=TRUE)
+band <- read.table('/space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imi_banded_minmaf2_set2_sites_LRT_MajorMinor.mafs',head=TRUE)
+stripe <- read.table('/space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imi_striped_minmaf2_set2_sites_LRT_MajorMinor.mafs',head=TRUE)
+
+# Used the following MAF files to check what the imitator+model-wide minor allele frequency is in each of the respective
+# imitator morphs and model species
+$ gunzip -c /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imi_band_stripe_models_minmaf2_set2_sites_LRT.mafs.gz | cut -f1-4 | tail -n+2 > /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imi_band_stripe_models_minmaf2_set2_sites_MajorMinor.pos
+
+$ angsd -b /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/variabilis_bams.txt -GL 1 -doMajorMinor 3 -doMaf 1 -SNP_pval 1 -sites /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imi_band_stripe_models_minmaf2_set2_sites_MajorMinor.pos -rf /space/s2/diana/s2_copy_frogs/Rimitator/sites_290421/imi_model_allsites_minmaf2_set2.rf -minQ 20 -minMapQ 20 -out /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/variabilis_minmaf2_set2_sites_LRT
+
+$ angsd -b /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/summersi_bams.txt -GL 1 -doMajorMinor 3 -doMaf 1 -SNP_pval 1 -sites /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imi_band_stripe_models_minmaf2_set2_sites_MajorMinor.pos -rf /space/s2/diana/s2_copy_frogs/Rimitator/sites_290421/imi_model_allsites_minmaf2_set2.rf -minQ 20 -minMapQ 20 -out /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/summersi_minmaf2_set2_sites_LRT
+
+$ angsd -b /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/imitator_banded_bams.txt -GL 1 -doMajorMinor 3 -doMaf 1 -SNP_pval 1 -sites /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imi_band_stripe_models_minmaf2_set2_sites_MajorMinor.pos -rf /space/s2/diana/s2_copy_frogs/Rimitator/sites_290421/imi_model_allsites_minmaf2_set2.rf -minQ 20 -minMapQ 20 -out /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imi_banded_minmaf2_set2_sites_LRT_MajorMinor
+
+$ angsd -b /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/imitator_striped_bams.txt -GL 1 -doMajorMinor 3 -doMaf 1 -SNP_pval 1 -sites /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imi_band_stripe_models_minmaf2_set2_sites_MajorMinor.pos -rf /space/s2/diana/s2_copy_frogs/Rimitator/sites_290421/imi_model_allsites_minmaf2_set2.rf -minQ 20 -minMapQ 20 -out /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imi_striped_minmaf2_set2_sites_LRT_MajorMinor
+
+# Combine MAF files for the banded+striped+model-wide minor allele frequency
+# Note that the population specific p-values, <pop>.maf.pval, are the probability that the banded+striped+model-wide MAF in that pop is zero
+$ /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/combine_freq.pl meta,band,stripe,variabilis,summersi \
+/space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imi_band_stripe_models_minmaf2_set2_sites_LRT.mafs \
+/space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imi_banded_minmaf2_set2_sites_LRT_MajorMinor.mafs \
+/space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imi_striped_minmaf2_set2_sites_LRT_MajorMinor.mafs \
+/space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/variabilis_minmaf2_set2_sites_LRT.mafs \
+/space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/summersi_minmaf2_set2_sites_LRT.mafs \
+> /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imi_band_stripe_models_minmaf2_set2_sites_maf.txt
+
+# Perform HKA test (retaining imitator polymoprhic sites even if outgroup is also segregating)
+
+# hka_test.R script is in tilden:/space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/hka_test.R
+# local:/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka_test.R
+
+$ ./hka_test.R /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imi_band_stripe_models_minmaf2_set2_sites_maf.txt 0.01 0.01 /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imitator_hka_test_minmaf2_set2_sites.txt > /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imitator_hka_test_minmaf2_set2_sites.stdout.txt
+
+# Create HKA Table for candidate genes
+R
+hka.df <- read.table('/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/imitator_hka_test_minmaf2_set2_sites.txt',head=TRUE)
+cand.gene <- hka.df[which(hka.df$region == "contig13293_combined_mc1r" | hka.df$region == "contig6404_combined_asip" | hka.df$region == "contig12059_combined_bsn" | hka.df$region == "contig12398_combined_retsat" | hka.df$region == "contig11350_combined_krt8.2"),]
+cand.gene.sort <- cand.gene[c(4,5,2,3,1),] # sort in order of table
+
+imi.p <- c(mc1r$imi.hka.yates.gc.pval, asip$imi.hka.yates.gc.pval, bsn$imi.hka.yates.gc.pval, retsat$imi.hka.yates.gc.pval, krt8$imi.hka.yates.gc.pval) # imitator-wide p-values
+imi.q <- p.adjust(imi.p, method="BH") # imitator-wide q-values
+band.p <- c(mc1r$band.hka.yates.gc.pval, asip$band.hka.yates.gc.pval, bsn$band.hka.yates.gc.pval, retsat$band.hka.yates.gc.pval, krt8$band.hka.yates.gc.pval) # band p-values
+band.q <- p.adjust(band.p, method="BH") # band q-values
+stripe.p <- c(mc1r$stripe.hka.yates.gc.pval, asip$stripe.hka.yates.gc.pval, bsn$stripe.hka.yates.gc.pval, retsat$stripe.hka.yates.gc.pval, krt8$stripe.hka.yates.gc.pval) # stripe p-values
+stripe.q <- p.adjust(stripe.p, method="BH") # stripe q-values
+
+# Perform HKA test REMOVING all sites polymorphic in outgroup
+
+$ ./hka_test2.R /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imi_band_stripe_models_minmaf2_set2_sites_maf.txt 0.01 0.01 /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imitator_hka_test2_minmaf2_set2_sites.txt > /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imitator_hka_test2_minmaf2_set2_sites.stdout.txt
+
+# Perform HKA test per exon (retaining imitator polymorphic sites even if outgrouup is segregating)
+
+# replace contig with exon name in combined MAFs file
+/space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/assignExons.pl /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imi_band_stripe_models_minmaf2_set2_sites_maf.txt /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imi_combined_targetedAndflanking_geneid_split.bed > /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imi_band_stripe_models_minmaf2_set2_sites_maf_exons.txt
+
+# run exon HKA test
+$ ./hka_test.R /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imi_band_stripe_models_minmaf2_set2_sites_maf_exons.txt 0.01 0.01 /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imitator_hka_test_minmaf2_set2_sites_exons.txt > /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imitator_hka_test_minmaf2_set2_sites_exons.stdout.txt
+
+# Create HKA Table for candidate exons
+R
+hka.ex <- read.table('/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/imitator_hka_test_minmaf2_set2_sites_exons.txt',head=TRUE)
+ex.cand <- hka.ex[which(hka.ex$region == "contig13293_combined_mc1r_997_3003" | hka.ex$region == "contig6404_combined_asip_1_778" | hka.ex$region == "contig6404_combined_asip_818_1952" | hka.ex$region == "contig12059_combined_bsn_1028_13499" | hka.ex$region == "contig12398_combined_retsat_6580_7612" | hka.ex$region == "contig11350_combined_krt8.2_1936_3075"),]
+ex.cand.sort <- ex.cand[c(4,5,6,2,3,1),] # reorder for exon order in table
+imi.q <- p.adjust(ex.cand.sort$imi.hka.yates.gc.pval, method="BH") # imitator q-values
+
+# Perform HKA test per exon REMOVING sites segregating in outgroup
+
+$ ./hka_test2.R /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imi_band_stripe_models_minmaf2_set2_sites_maf_exons.txt 0.01 0.01 /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imitator_hka_test2_minmaf2_set2_sites_exons.txt > /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imitator_hka_test2_minmaf2_set2_sites_exons.stdout.txt
+
+# Create HKA table for candidate exons (no outgroup segregating sites test)
+R
+hka.ex2 <- read.table('/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/imitator_hka_test2_minmaf2_set2_sites_exons.txt',head=TRUE)
+ex.cand2 <- hka.ex2[which(hka.ex2$region == "contig13293_combined_mc1r_997_3003" | hka.ex2$region == "contig6404_combined_asip_1_778" | hka.ex2$region == "contig6404_combined_asip_818_1952" | hka.ex2$region == "contig12059_combined_bsn_1028_13499" | hka.ex2$region == "contig12398_combined_retsat_6580_7612" | hka.ex2$region == "contig11350_combined_krt8.2_1936_3075"),]
+ex.cand.sort2 <- ex.cand2[c(4,5,6,2,3,1),] # reorder for exon order in table
+imi2.q <- p.adjust(ex.cand.sort2$imi.hka.gc.pval, method="BH") # all imitator q-values
+imi2.yates.q <- p.adjust(ex.cand.sort2$imi.hka.yates.gc.pval, method="BH") # all imitator yates q-values
+band2.q <- p.adjust(ex.cand.sort2$band.hka.gc.pval, method="BH") # banded q-values
+band2.yates.q <- p.adjust(ex.cand.sort2$band.hka.yates.gc.pval, method="BH") # banded imitator yates q-values
+stripe2.q <- p.adjust(ex.cand.sort2$stripe.hka.gc.pval, method="BH") # striped q-values
+stripe2.yates.q <- p.adjust(ex.cand.sort2$stripe.hka.yates.gc.pval, method="BH") # striped imitator yates q-values
+
+# HKA test using Hey program
+
+# make inputs
+
+# find sequence length of genes and exons in the imi_model_allsites_minmaf2_set2 allsites set
+$ /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/maf2lengths.pl /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imi_band_stripe_models_minmaf2_set2_sites_maf.txt | grep -v contig13298_combined_CYTB > /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imi_model_allsites_minmaf2_set2_gene_length.txt
+
+$ /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/maf2lengths.pl /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imi_band_stripe_models_minmaf2_set2_sites_maf_exons.txt | grep -v contig13298_combined_CYTB > /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imi_model_allsites_minmaf2_set2_exon_length.txt
+
+# For all non-NA annotated genes and exons print Hey-test-style polymorphism and divergence information
+
+# genes
+$ /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/hey/make_hey_input.pl /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/imitator_hka_test_minmaf2_set2_sites.txt /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/hey/imi_model_allsites_minmaf2_set2_gene_length.txt 1 > /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/hey/imitator_hka_counts_minmaf2_set2_sites_annotated_genes.txt
+
+$ /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/hey/make_hey_input.pl /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/imitator_hka_test_minmaf2_set2_sites.txt /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/hey/imi_model_allsites_minmaf2_set2_gene_length.txt 2 > /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/hey/band_hka_counts_minmaf2_set2_sites_annotated_genes.txt
+
+$ /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/hey/make_hey_input.pl /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/imitator_hka_test_minmaf2_set2_sites.txt /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/hey/imi_model_allsites_minmaf2_set2_gene_length.txt 3 > /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/hey/stripe_hka_counts_minmaf2_set2_sites_annotated_genes.txt
+
+#exons
+$ /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/hey/make_hey_input.pl /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/imitator_hka_test_minmaf2_set2_sites_exons.txt /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/hey/imi_model_allsites_minmaf2_set2_exon_length.txt 1 > /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/hey/imitator_hka_counts_minmaf2_set2_sites_annotated_exons.txt
+
+$ /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/hey/make_hey_input.pl /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/imitator_hka_test_minmaf2_set2_sites_exons.txt /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/hey/imi_model_allsites_minmaf2_set2_exon_length.txt 2 > /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/hey/band_hka_counts_minmaf2_set2_sites_annotated_exons.txt
+
+$ /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/hey/make_hey_input.pl /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/imitator_hka_test_minmaf2_set2_sites_exons.txt /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/hey/imi_model_allsites_minmaf2_set2_exon_length.txt 3 > /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/hey/stripe_hka_counts_minmaf2_set2_sites_annotated_exons.txt
+
+# input for candidate genes
+# note: headers were manually added to the top of the following output from R:
+# row1: description of the test
+# row2: number of loci
+# row3: <ingroup name (species 1)> and <outgroup name (species 2)>
+workdir='/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/hey'
+
+R
+
+imi <- read.table('imitator_hka_counts_minmaf2_set2_sites_annotated_genes.txt',head=TRUE)
+imi.cand <- imi[c(which(imi$SHORT.ID == "mc1r" | imi$SHORT.ID == "asip" | imi$SHORT.ID == "bsn" | imi$SHORT.ID == "retsat" | imi$SHORT.ID == "krt8.2")),]
+imi.cand.sort <- imi.cand[c(4,5,2,3,1),]
+write.table(imi.cand.sort[,-1],file='imitator_candidates_hey_input',col.names=FALSE,row.names=FALSE,sep="\t",quote=FALSE)
+
+band <- read.table('band_hka_counts_minmaf2_set2_sites_annotated_genes.txt',head=TRUE)
+band.cand <- band[c(which(band$SHORT.ID == "mc1r" | band$SHORT.ID == "asip" | band$SHORT.ID == "bsn" | band$SHORT.ID == "retsat" | band$SHORT.ID == "krt8.2")),]
+band.cand.sort <- band.cand[c(4,5,2,3,1),]
+write.table(band.cand.sort[,-1],file='band_candidates_hey_input',col.names=FALSE,row.names=FALSE,sep="\t",quote=FALSE)
+
+stripe <- read.table('stripe_hka_counts_minmaf2_set2_sites_annotated_genes.txt',head=TRUE)
+stripe.cand <- stripe[c(which(stripe$SHORT.ID == "mc1r" | stripe$SHORT.ID == "asip" | stripe$SHORT.ID == "bsn" | stripe$SHORT.ID == "retsat" | stripe$SHORT.ID == "krt8.2")),]
+stripe.cand.sort <- stripe.cand[c(4,5,2,3,1),]
+write.table(stripe.cand.sort[,-1],file='stripe_candidates_hey_input',col.names=FALSE,row.names=FALSE,sep="\t",quote=FALSE)
+
+imi.ex <- read.table('imitator_hka_counts_minmaf2_set2_sites_annotated_exons.txt',head=TRUE)
+imi.ex.cand <- imi.ex[c(which(imi.ex$SHORT.ID == "mc1r_2" | imi.ex$SHORT.ID == "asip_1" | imi.ex$SHORT.ID == "asip_2" | imi.ex$SHORT.ID == "bsn_2" | imi.ex$SHORT.ID == "retsat_11" | imi.ex$SHORT.ID == "krt8.2_3")),]
+imi.ex.cand.sort <- imi.ex.cand[c(4,5,6,2,3,1),]
+write.table(imi.ex.cand.sort[,-1],file='imitator_candidate_exons_hey_input',col.names=FALSE,row.names=FALSE,sep="\t",quote=FALSE)
+
+band.ex <- read.table('band_hka_counts_minmaf2_set2_sites_annotated_exons.txt',head=TRUE)
+band.ex.cand <- band.ex[c(which(band.ex$SHORT.ID == "mc1r_2" | band.ex$SHORT.ID == "asip_1" | band.ex$SHORT.ID == "asip_2" | band.ex$SHORT.ID == "bsn_2" | band.ex$SHORT.ID == "retsat_11" | band.ex$SHORT.ID == "krt8.2_3")),]
+band.ex.cand.sort <- band.ex.cand[c(4,5,6,2,3,1),]
+write.table(band.ex.cand.sort[,-1],file='band_candidate_exons_hey_input',col.names=FALSE,row.names=FALSE,sep="\t",quote=FALSE)
+
+stripe.ex <- read.table('stripe_hka_counts_minmaf2_set2_sites_annotated_exons.txt',head=TRUE)
+stripe.ex.cand <- stripe.ex[c(which(stripe.ex$SHORT.ID == "mc1r_2" | stripe.ex$SHORT.ID == "asip_1" | stripe.ex$SHORT.ID == "asip_2" | stripe.ex$SHORT.ID == "bsn_2" | stripe.ex$SHORT.ID == "retsat_11" | stripe.ex$SHORT.ID == "krt8.2_3")),]
+stripe.ex.cand.sort <- stripe.ex.cand[c(4,5,6,2,3,1),]
+write.table(stripe.ex.cand.sort[,-1],file='stripe_candidate_exons_hey_input',col.names=FALSE,row.names=FALSE,sep="\t",quote=FALSE)
+
+# run HKA test on candidate genes
+$ printf "%s\n%s\n%s\n" 'banded and striped imitator' 'n' 'n' | ~/install/HKA/HKA/hka -Dimitator_candidates_hey_input -Rimitator_candidate_genes_hey_out -S1000
+$ printf "%s\n%s\n%s\n" 'banded imitator' 'n' 'n' | ~/install/HKA/HKA/hka -Dband_candidates_hey_input -Rband_candidate_genes_hey_out -S1000
+$ printf "%s\n%s\n%s\n" 'striped imitator' 'n' 'n' | ~/install/HKA/HKA/hka -Dstripe_candidates_hey_input -Rstripe_candidate_genes_hey_out -S1000
+$ printf "%s\n%s\n%s\n" 'banded and striped imitator' 'n' 'n' | ~/install/HKA/HKA/hka -Dimitator_candidate_exons_hey_input -Rimitator_candidate_exons_hey_out -S1000
+$ printf "%s\n%s\n%s\n" 'banded imitator' 'n' 'n' | ~/install/HKA/HKA/hka -Dband_candidate_exons_hey_input -Rband_candidate_exons_hey_out -S1000
+$ printf "%s\n%s\n%s\n" 'striped imitator' 'n' 'n' | ~/install/HKA/HKA/hka -Dstripe_candidate_exons_hey_input -Rstripe_candidate_exons_hey_out -S1000
+
+# calculate expected X2 CDF from hey simulations
+workdir='/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/hey'
+$ ./x2dist.pl imitator_hka_counts_minmaf2_set2_sites_annotated_genes.txt 5 1000 imitator_hey_genes_expected_sim_cdf.txt
+$ ./x2dist.pl band_hka_counts_minmaf2_set2_sites_annotated_genes.txt 5 1000 band_hey_genes_expected_sim_cdf.txt
+$ ./x2dist.pl stripe_hka_counts_minmaf2_set2_sites_annotated_genes.txt 5 1000 stripe_hey_genes_expected_sim_cdf.txt
+$ ./x2dist.pl imitator_hka_counts_minmaf2_set2_sites_annotated_exons.txt 6 1000 imitator_hey_exons_expected_sim_cdf.txt
+$ ./x2dist.pl band_hka_counts_minmaf2_set2_sites_annotated_exons.txt 6 1000 band_hey_exons_expected_sim_cdf.txt
+$ ./x2dist.pl stripe_hka_counts_minmaf2_set2_sites_annotated_exons.txt 6 1000 stripe_hey_exons_expected_sim_cdf.txt
+
+# HKA test with Hey program with segregating sites in ougroup REMOVED
+
+# make inputs
+
+Calculate length of exons from MAF file, discarding any sites for which the outgroup is segregating
+
+$ /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/maf2lengths_2.pl /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imi_band_stripe_models_minmaf2_set2_sites_maf_exons.txt 0.01 | grep -v contig13298_combined_CYTB > /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/imi_model_allsites_minmaf2_set2_exon_length_outgroup_seg_removed.txt
+
+# For all non-NA annotated genes exons print Hey-test-style polymorphism and divergence information
+
+$ /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/hey/make_hey_input.pl /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/imitator_hka_test2_minmaf2_set2_sites_exons.txt /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/hey/imi_model_allsites_minmaf2_set2_exon_length_outgroup_seg_removed.txt 1 > /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/hey/imitator_hka_counts_minmaf2_set2_sites_annotated_exons_outgroup_seg_removed.txt
+
+$ /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/hey/make_hey_input.pl /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/imitator_hka_test2_minmaf2_set2_sites_exons.txt /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/hey/imi_model_allsites_minmaf2_set2_exon_length_outgroup_seg_removed.txt 2 > /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/hey/band_hka_counts_minmaf2_set2_sites_annotated_exons_outgroup_seg_removed.txt
+
+$ /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/hey/make_hey_input.pl /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/imitator_hka_test2_minmaf2_set2_sites_exons.txt /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/hey/imi_model_allsites_minmaf2_set2_exon_length_outgroup_seg_removed.txt 3 > /home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/hey/stripe_hka_counts_minmaf2_set2_sites_annotated_exons_outgroup_seg_removed.txt
+
+# extract exons to test
+# note: headers were manually added to the top of the following output from R:
+# row1: description of the test
+# row2: number of loci
+# row3: <ingroup name (species 1)> and <outgroup name (species 2)>
+
+workdir='/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/selection/hka/hey'
+
+R
+
+imi.ex <- read.table('imitator_hka_counts_minmaf2_set2_sites_annotated_exons_outgroup_seg_removed.txt',head=TRUE)
+imi.ex.cand <- imi.ex[c(which(imi.ex$SHORT.ID == "mc1r_2" | imi.ex$SHORT.ID == "asip_1" | imi.ex$SHORT.ID == "asip_2" | imi.ex$SHORT.ID == "bsn_2" | imi.ex$SHORT.ID == "retsat_11" | imi.ex$SHORT.ID == "krt8.2_3")),]
+imi.ex.cand.sort <- imi.ex.cand[c(4,5,6,2,3,1),]
+write.table(imi.ex.cand.sort[,-1],file='imitator_candidate_exons_hey_input_outgroup_seg_removed',col.names=FALSE,row.names=FALSE,sep="\t",quote=FALSE)
+
+band.ex <- read.table('band_hka_counts_minmaf2_set2_sites_annotated_exons_outgroup_seg_removed.txt',head=TRUE)
+band.ex.cand <- band.ex[c(which(band.ex$SHORT.ID == "mc1r_2" | band.ex$SHORT.ID == "asip_1" | band.ex$SHORT.ID == "asip_2" | band.ex$SHORT.ID == "bsn_2" | band.ex$SHORT.ID == "retsat_11" | band.ex$SHORT.ID == "krt8.2_3")),]
+band.ex.cand.sort <- band.ex.cand[c(4,5,6,2,3,1),]
+write.table(band.ex.cand.sort[,-1],file='band_candidate_exons_hey_input_outgroup_seg_removed',col.names=FALSE,row.names=FALSE,sep="\t",quote=FALSE)
+
+stripe.ex <- read.table('stripe_hka_counts_minmaf2_set2_sites_annotated_exons_outgroup_seg_removed.txt',head=TRUE)
+stripe.ex.cand <- stripe.ex[c(which(stripe.ex$SHORT.ID == "mc1r_2" | stripe.ex$SHORT.ID == "asip_1" | stripe.ex$SHORT.ID == "asip_2" | stripe.ex$SHORT.ID == "bsn_2" | stripe.ex$SHORT.ID == "retsat_11" | stripe.ex$SHORT.ID == "krt8.2_3")),]
+stripe.ex.cand.sort <- stripe.ex.cand[c(4,5,6,2,3,1),]
+write.table(stripe.ex.cand.sort[,-1],file='stripe_candidate_exons_hey_input_outgroup_seg_removed',col.names=FALSE,row.names=FALSE,sep="\t",quote=FALSE)
+
+# run HKA test on candidate genes
+
+$ printf "%s\n%s\n%s\n" 'banded and striped imitator' 'n' 'n' | ~/install/HKA/HKA/hka -Dimitator_candidate_exons_hey_input_outgroup_seg_removed -Rimitator_candidate_exons_hey_outgroup_seg_removed_out -S1000
+
+$ printf "%s\n%s\n%s\n" 'banded imitator' 'n' 'n' | ~/install/HKA/HKA/hka -Dband_candidate_exons_hey_input_outgroup_seg_removed -Rband_candidate_exons_hey_outgroup_seg_removed_out -S1000
+
+$ printf "%s\n%s\n%s\n" 'striped imitator' 'n' 'n' | ~/install/HKA/HKA/hka -Dstripe_candidate_exons_hey_input_outgroup_seg_removed -Rstripe_candidate_exons_hey_outgroup_seg_removed_out -S1000
+
+## Genotype likelihoods in Beagle format
+workdir='/space/s2/diana/Rimitator/sites_290421'
+
+# GLs for all imitator and models set2
+$ ~/install/angsd/angsd -bam /space/s2/diana/Rimitator/all_morphs_imi_model.bamlist -GL 1 -doMajorMinor 1 -doGlf 2 -sites ./snp_call/imi_model_snps_minmaf2_set2.pos -rf ./snp_call/imi_model_snps_minmaf2_set2.rf -minQ 20 -minMapQ 20 -out ./genotypes/imi_model_snps_minmaf2_set2_gl -P 4
+
+# GLs for all imitator and models set3
+$ ~/install/angsd/angsd -bam /space/s2/diana/Rimitator/all_morphs_imi_model.bamlist -GL 1 -doMajorMinor 1 -doGlf 2 -sites ./snp_call/imi_model_snps_minmaf2_set3.pos -rf ./snp_call/imi_model_snps_minmaf2_set3.rf -minQ 20 -minMapQ 20 -out ./genotypes/imi_model_snps_minmaf2_set3_gl -P 4
+
+## subset the GL output for particular analyses
+
+workdir='/space/s2/diana/Rimitator/sites_290421/genotypes'
+
+# banded, striped, variabilis, summersi (for trees)
+$ zcat imi_model_snps_minmaf2_set2_gl.beagle.gz | cut -f 1,2,3,4-102,103-201,376-384,385-390 | gzip > band_stripe_models_minmaf2_set2_gl.beagle.gz
+
+$ (zcat band_stripe_models_minmaf2_set2_gl.beagle.gz | head -n 1 && zgrep contig13293_combined_mc1r band_stripe_models_minmaf2_set2_gl.beagle.gz) | gzip > band_stripe_models_minmaf2_set2_gl_mc1r.beagle.gz
+
+$ (zcat band_stripe_models_minmaf2_set2_gl.beagle.gz | head -n 1 && zgrep contig6404_combined_asip band_stripe_models_minmaf2_set2_gl.beagle.gz) | gzip > band_stripe_models_minmaf2_set2_gl_asip.beagle.gz
+
+# ignoring arg2 for the sites_290421 round because contig8307 identity is uncertain based on the liftover and blasting (also initially an unannotated contig)
+$ (zcat band_stripe_models_minmaf2_set2_gl.beagle.gz | head -n 1 && zgrep "contig277_combined_arg2\|contig8307_combined" band_stripe_models_minmaf2_set2_gl.beagle.gz) | gzip > band_stripe_models_minmaf2_set2_gl_arg2.beagle.gz
+
+# ignoring arg2 for the sites_290421 round because contig8307 identity is uncertain based on the liftover and blasting (also initially an unannotated contig)
+$ (zcat band_stripe_models_minmaf2_set2_gl.beagle.gz | head -n 1 && zgrep contig8307_combined band_stripe_models_minmaf2_set2_gl.beagle.gz) | gzip > band_stripe_models_minmaf2_set2_gl_contig8307_arg2.beagle.gz
+
+# ignoring ptch2 for the sites_290421 round because its evidence as a candidate is weak
+$ (zcat band_stripe_models_minmaf2_set2_gl.beagle.gz | head -n 1 && zgrep contig2561_combined_ptch2 band_stripe_models_minmaf2_set2_gl.beagle.gz) | gzip > band_stripe_models_minmaf2_set2_gl_ptch2.beagle.gz
+
+$ (zcat band_stripe_models_minmaf2_set2_gl.beagle.gz | head -n 1 && zgrep contig12059_combined_bsn band_stripe_models_minmaf2_set2_gl.beagle.gz) | gzip > band_stripe_models_minmaf2_set2_gl_bsn.beagle.gz
+
+$ (zcat band_stripe_models_minmaf2_set2_gl.beagle.gz | head -n 1 && zgrep contig11350_combined_krt8.2 band_stripe_models_minmaf2_set2_gl.beagle.gz) | gzip > band_stripe_models_minmaf2_set2_gl_krt8.2.beagle.gz
+
+$ (zcat band_stripe_models_minmaf2_set2_gl.beagle.gz | head -n 1 && zgrep contig12398_combined_retsat band_stripe_models_minmaf2_set2_gl.beagle.gz) | gzip > band_stripe_models_minmaf2_set2_gl_retsat.beagle.gz
+
+# banded, striped, admix (for admixture analyses)
+$ zcat imi_model_snps_minmaf2_set2_gl.beagle.gz  | cut -f 1,2,3,4-102,103-201,202-375 | gzip > band_stripe_admix_minmaf2_set2_gl.beagle.gz
+
+## Genotype posterior probabilities using the allele frequency as a prior
+
+# GPs for all imitator and models set2
+$ ~/install/angsd/angsd -bam /space/s2/diana/Rimitator/all_morphs_imi_model.bamlist -GL 1 -doMajorMinor 1 -doMaf 1 -doPost 1 -doGeno 32 -minQ 20 -minMapQ 20 -sites ./snp_call/imi_model_snps_minmaf2_set2.pos -rf ./snp_call/imi_model_snps_minmaf2_set2.rf -out ./genotypes/imi_model_snps_minmaf2_set2_gp -P 4
+
+# GPs for all imitator and models set3
+$ ~/install/angsd/angsd -bam /space/s2/diana/Rimitator/all_morphs_imi_model.bamlist -GL 1 -doMajorMinor 1 -doMaf 1 -doPost 1 -doGeno 32 -minQ 20 -minMapQ 20 -sites ./snp_call/imi_model_snps_minmaf2_set3.pos -rf ./snp_call/imi_model_snps_minmaf2_set3.rf -out ./genotypes/imi_model_snps_minmaf2_set3_gp -P 4
+
+# GPs for imitator only set2 (all sites in this subset are variable among imitator)
+~/install/angsd/angsd -bam /space/s2/diana/Rimitator/all_morphs_imi.bamlist -GL 1 -doMajorMinor 1 -doMaf 1 -doPost 1 -doGeno 32 -minQ 20 -minMapQ 20 -SNP_pval 1e-6 -sites ./snp_call/imi_model_snps_minmaf2_set2.pos -rf ./snp_call/imi_model_snps_minmaf2_set2.rf -out ./genotypes/imi_snps_minmaf2_set2_gp -P 4
+
+## Genetic distance matrix from GLs for NJ tree
+
+workdir='/space/s2/diana/Rimitator/sites_290421/'
+
+# genome-wide distance matrix
+$ ~/install/ngsDist/ngsDist --geno ./genotypes/band_stripe_models_minmaf2_set2_gl.beagle.gz --probs 1 --n_ind 71 --n_sites 928822 --labels ./trees/band_stripe_model.labels --evol_model 0 --n_boot_rep 100 --boot_block_size 1 --out ./trees/band_stripe_models.dist --n_threads 16
+
+# candidate gene distance matrices
+
+$ ~/install/ngsDist/ngsDist --geno ./genotypes/band_stripe_models_minmaf2_set2_gl_mc1r.beagle.gz --probs 1 --n_ind 71 --n_sites 90 --labels ./trees/band_stripe_model.labels --evol_model 0 --out ./trees/band_stripe_models_mc1r.dist
+
+$ ~/install/ngsDist/ngsDist --geno ./genotypes/band_stripe_models_minmaf2_set2_gl_asip.beagle.gz --probs 1 --n_ind 71 --n_sites 55 --labels ./trees/band_stripe_model.labels --evol_model 0 --out ./trees/band_stripe_models_asip.dist
+
+# ignore arg2
+#$ ~/install/ngsDist/ngsDist --geno ./genotypes/band_stripe_models_minmaf2_set2_gl_arg2.beagle.gz --probs 1 --n_ind 71 --n_sites 97 --labels ./trees/band_stripe_model.labels --evol_model 0 --out ./trees/band_stripe_models_arg2.dist
+
+# ignore arg2
+#$ ~/install/ngsDist/ngsDist --geno ./genotypes/band_stripe_models_minmaf2_set2_gl_contig8307_arg2.beagle.gz --probs 1 --n_ind 71 --n_sites 51 --labels ./trees/band_stripe_model.labels --evol_model 0 --out ./trees/band_stripe_models_contig8307_arg2.dist
+
+$ ~/install/ngsDist/ngsDist --geno ./genotypes/band_stripe_models_minmaf2_set2_gl_bsn.beagle.gz --probs 1 --n_ind 71 --n_sites 68 --labels ./trees/band_stripe_model.labels --evol_model 0 --out ./trees/band_stripe_models_bsn.dist
+
+# ignore ptch2
+#$ ~/install/ngsDist/ngsDist --geno ./genotypes/band_stripe_models_minmaf2_set2_gl_ptch2.beagle.gz --probs 1 --n_ind 71 --n_sites 77 --labels ./trees/band_stripe_model.labels --evol_model 0 --out ./trees/band_stripe_models_ptch2.dist
+
+$ ~/install/ngsDist/ngsDist --geno ./genotypes/band_stripe_models_minmaf2_set2_gl_krt8.2.beagle.gz --probs 1 --n_ind 71 --n_sites 72 --labels ./trees/band_stripe_model.labels --evol_model 0 --out ./trees/band_stripe_models_krt8.2.dist
+
+$ ~/install/ngsDist/ngsDist --geno ./genotypes/band_stripe_models_minmaf2_set2_gl_retsat.beagle.gz --probs 1 --n_ind 71 --n_sites 143 --labels ./trees/band_stripe_model.labels --evol_model 0 --out ./trees/band_stripe_models_retsat.dist
+
+## Trees
+
+workdir='/space/s2/diana/Rimitator/sites_290421/trees'
+
+# calculate genome-wide tree with FastME and add branch support with RAxML
+
+$ fastme -i band_stripe_models.dist -m I -s -D 101 -T 10 -o band_stripe_models.nwk
+
+# full data tree
+$ head -n 1 band_stripe_models.nwk > band_stripe_models.main.nwk
+# bootstrap trees
+$ tail -n +2 band_stripe_models.nwk | awk 'NF' > band_stripe_models.boot.nwk
+
+$ raxml-ng --support --tree band_stripe_models.main.nwk --bs-trees band_stripe_models.boot.nwk --prefix band_stripe_models
+
+# calculate tree for candidate genes
+
+$ fastme -i band_stripe_models_mc1r.dist -m I -s -D 1 -o band_stripe_models_mc1r.nwk
+$ fastme -i band_stripe_models_asip.dist -m I -s -D 1 -o band_stripe_models_asip.nwk
+#$ fastme -i band_stripe_models_arg2.dist -m I -s -D 1 -o band_stripe_models_arg2.nwk
+$ fastme -i band_stripe_models_bsn.dist -m I -s -D 1 -o band_stripe_models_bsn.nwk
+#$ fastme -i band_stripe_models_ptch2.dist -m I -s -D 1 -o band_stripe_models_ptch2.nwk
+$ fastme -i band_stripe_models_krt8.2.dist -m I -s -D 1 -o band_stripe_models_krt8.2.nwk
+$ fastme -i band_stripe_models_retsat.dist -m I -s -D 1 -o band_stripe_models_retsat.nwk
+
+# plot genome-wide tree in R
+
+workdir='/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/tree'
+
+library(phytools)
+exometree <- read.tree('band_stripe_models.raxml.support')
+
+#create tip label colors
+morphs <- read.table('band_stripe_model_morph_map.txt',head=FALSE)
+tipcol <- as.character(morphs$V2[match(exometree$tip.label, morphs$V1)])
+tipcol <- replace(tipcol, which(tipcol == "band"), "gold2")
+tipcol <- replace(tipcol, which(tipcol == "stripe"), "darkseagreen4")
+tipcol <- replace(tipcol, which(tipcol == "variabilis"), "deepskyblue")
+tipcol <- replace(tipcol, which(tipcol == "summersi"), "maroon1")
+
+# Turn node labels into probabilities
+node.label.orig <- exometree$node.label
+node.label.new <- as.character(as.numeric(exometree$node.label)/100)
+node.label.new[is.na(node.label.new)] <- ""
+exometree$node.label <- node.label.new
+
+# plot
+plot(exometree,type="unrooted",lab4ut="axial", no.margin=TRUE, cex=0.4, tip.color=tipcol,rotate.tree=-20)
+legend('top',legend=c("band","stripe","variabilis","summersi"),fill=c("gold2","darkseagreen4","deepskyblue","maroon1"),bty='n',cex=1.0,horiz=TRUE,title="exome, 971714")
+plot(exometree,type="phylogram",lab4ut="axial", no.margin=TRUE, cex=0.4, tip.color=tipcol,show.node.label=TRUE)
+
+## Principle Components Analysis
+
+# covariance matrix imitator + models
+$ ngsCovar -probfile ./genotypes/imi_model_snps_minmaf2_set2_gp.geno -nind 129 -nsites 928822 -norm 0 -call 0 -outfile ./pca/imi_model_minmaf2_set2.covar
+
+# pca imitator + models
+R
+covarmat <- as.matrix(read.table('imi_model_minmaf2_set2.covar',head=FALSE))
+eig <- eigen(covarmat)
+pcvar <- (eig$values/sum(eig$values))*100 # percent genetic variance explained by each PC
+popcol <- c(rep("gold2",33),rep("darkseagreen4",33),rep("darkorchid",58),rep("deepskyblue",3),rep("maroon1",2)) # define colors for plotting populations
+
+pdf(file='imi_model_minmaf2_set2_pca.pdf')
+par(mfrow=c(2,2))
+plot(x=eig$vectors[,1], y=eig$vectors[,2], xlab=paste0("PC1, ",sprintf("%.2f",pcvar[1]), "%"), ylab=paste0("PC2, ",sprintf("%.2f",pcvar[2]),"%"), main="imi_model_snps_minmaf2_set2", col=popcol, pch=19, cex=1.2) # PC1 vs PC2
+legend('topleft',legend=c("band","stripe","admix","variabilis","summersi"),fill=c("gold2","darkseagreen4","darkorchid","deepskyblue","maroon1"),bty='n',cex=0.8)
+plot(x=eig$vectors[,2], y=eig$vectors[,3], xlab=paste0("PC2, ",sprintf("%.2f",pcvar[2]), "%"), ylab=paste0("PC3, ",sprintf("%.2f",pcvar[3]),"%"), main=NULL, col=popcol, pch=19, cex=1.2) # PC2 vs PC3
+plot(x=eig$vectors[,3], y=eig$vectors[,4], xlab=paste0("PC3, ",sprintf("%.2f",pcvar[3]), "%"), ylab=paste0("PC4, ",sprintf("%.2f",pcvar[4]),"%"), main=NULL, col=popcol, pch=19, cex=1.2) # PC3 vs PC4
+plot(x=eig$vectors[,4], y=eig$vectors[,5], xlab=paste0("PC4, ",sprintf("%.2f",pcvar[4]), "%"), ylab=paste0("PC5, ",sprintf("%.2f",pcvar[5]),"%"), main=NULL, col=popcol, pch=19, cex=1.2) # PC4 vs PC5
+plot(x=eig$vectors[,5], y=eig$vectors[,6], xlab=paste0("PC5, ",sprintf("%.2f",pcvar[5]), "%"), ylab=paste0("PC6, ",sprintf("%.2f",pcvar[6]),"%"), main=NULL, col=popcol, pch=19, cex=1.2) # PC5 vs PC6
+plot(x=eig$vectors[,6], y=eig$vectors[,7], xlab=paste0("PC6, ",sprintf("%.2f",pcvar[6]), "%"), ylab=paste0("PC7, ",sprintf("%.2f",pcvar[7]),"%"), main=NULL, col=popcol, pch=19, cex=1.2) # PC6 vs PC7
+dev.off()
+
+#
+#
+#
+
+# covariance matrix imitator only
+$ ngsCovar -probfile ./genotypes/imi_snps_minmaf2_set2_gp.geno -nind 124 -nsites 206003 -norm 0 -call 0 -outfile ./pca/imi_minmaf2_set2.covar
+
+# pca imitator only
+R
+covarmat.imi <- as.matrix(read.table('imi_minmaf2_set2.covar',head=FALSE))
+eig <- eigen(covarmat.imi)
+pcvar <- (eig$values/sum(eig$values))*100 # percent genetic variance explained by each PC
+popcol <- c(rep("gold2",33),rep("darkseagreen4",33),rep("darkorchid",58)) # define colors for plotting populations
+
+pdf(file='imi_minmaf2_set2_pca.pdf')
+plot(x=eig$vectors[,1], y=eig$vectors[,2], xlab=paste0("PC1, ",sprintf("%.2f",pcvar[1]), "%"), ylab=paste0("PC2, ",sprintf("%.2f",pcvar[2]),"%"), main="imi_snps_minmaf2_set2", col=popcol, pch=19, cex=1.2) # PC1 vs PC2
+legend('topleft',legend=c("band","stripe","admix"),fill=c("gold2","darkseagreen4","darkorchid"),bty='n',cex=0.8)
+dev.off()
+
+pdf(file='imi_minmaf2_set2_multi_pcs.pdf')
+par(mfrow=c(2,2))
+# PC1 vs PC2
+plot(x=eig$vectors[,1], y=eig$vectors[,2], xlab=paste0("PC1, ",sprintf("%.2f",pcvar[1]), "%"), ylab=paste0("PC2, ",sprintf("%.2f",pcvar[2]),"%"), main="imi_snps_minmaf2_set2", col=popcol, pch=19, cex=1.2) 
+
+# more PCs
+legend('topleft',legend=c("band","stripe","admix"),fill=c("gold2","darkseagreen4","darkorchid"),bty='n',cex=0.8)
+for (i in 2:19) {
+	j <- i+1
+	plot(x=eig$vectors[,i], y=eig$vectors[,j], xlab=paste0("PC", i, " ",sprintf("%.2f",pcvar[i]), "%"), ylab=paste0("PC", j," ",sprintf("%.2f",pcvar[j]),"%"), col=popcol, pch=19, cex=1.2)	
+}
+dev.off()
+
+## Admixture
+
+# run ngsAdmix for imitator populations at 2-5 ancestral populations
+workdir='/space/s2/diana/Rimitator/sites_290421'
+
+$ ~/install/ngsAdmix/NGSadmix -likes ./genotypes/band_stripe_admix_minmaf2_set2_gl.beagle.gz -K 2 -P 5 -minMaf 0.05 -outfiles ./admixture/band_stripe_admix_minmaf2_set2_k2 -printInfo 1
+
+$ ~/install/ngsAdmix/NGSadmix -likes ./genotypes/band_stripe_admix_minmaf2_set2_gl.beagle.gz -K 3 -P 5 -minMaf 0.05 -outfiles ./admixture/band_stripe_admix_minmaf2_set2_k3 -printInfo 1
+
+$ ~/install/ngsAdmix/NGSadmix -likes ./genotypes/band_stripe_admix_minmaf2_set2_gl.beagle.gz -K 4 -P 5 -minMaf 0.05 -outfiles ./admixture/band_stripe_admix_minmaf2_set2_k4 -printInfo 1
+
+$ ~/install/ngsAdmix/NGSadmix -likes ./genotypes/band_stripe_admix_minmaf2_set2_gl.beagle.gz -K 5 -P 5 -minMaf 0.05 -outfiles ./admixture/band_stripe_admix_minmaf2_set2_k5 -printInfo 1
+
+## Evaluate missing data filtering strigency on the SFS (!! The SFS evaluation code is from the sites_17092020 round !!). New code is in the PLOT_CODE.R script.
+
+wordir='/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_17092020/sfs'
+
+R
+sfs <- scan('all_imi_allsites_set1.sfs')
+sfs <- sfs[2:length(sfs)]
+sfs.strict <- scan('all_imi_allsites_set1strict.sfs')
+sfs.strict <- sfs.strict[2:length(sfs.strict)]
+sfsp <- sfs/sum(sfs)
+sfs.strictp <- sfs.strict/sum(sfs.strict)
+rmsd <- sqrt((sfsp - sfs.strictp)^2)
+par(mfrow=c(3,1))
+plot(rmsd~c(1:length(rmsd)),type="b",pch=20,main="all_imi_allsites_set1.sfs vs all_imi_allsites_set1strict.sfs Proportions", xlab="MAF", ylab="Absolute difference in proportion of SNPs")
+abline(v=5,col="red",lty=2)
+legend('topright',legend="MAF cutoff",col="red",lty=2,bty='n')
+barplot(sfs,xlab="MAF",ylab="Number SNPs", main="all_imi_allsites_set1.sfs \n >14 individuals with >2X in each pop")
+barplot(sfs.strict,xlab="MAF",ylab="Number SNPs", main="all_imi_allsites_set1strict.sfs \n >95% individuals with >3X in each pop")
+
+## FST/DIVERGENCE SCAN BETWEEN STRIPED VS BANDED MORPHS
+
+# calculate unfolded SFS prior
+workdir='/space/s2/diana/Rimitator/sites_290421'
+
+$ ~/install/angsd/angsd -bam /space/s1/linderoth/imitator/spades/imitator_striped_bams.txt -GL 1 -doSaf 1 -minQ 20 -minMapQ 20 -anc /space/s1/linderoth/imitator/spades/ref/imi_combined_targetedAndflanking_geneid.fasta -sites ./snp_call/imi_snps_minmaf2_set1.pos -rf ./snp_call/imi_snps_minmaf2_set1.rf -out ./morph_divergence/striped_minmaf2_set1_unfolded -P 4
+
+$ ~/install/angsd/angsd -bam /space/s1/linderoth/imitator/spades/imitator_banded_bams.txt -GL 1 -doSaf 1 -minQ 20 -minMapQ 20 -anc /space/s1/linderoth/imitator/spades/ref/imi_combined_targetedAndflanking_geneid.fasta -sites ./snp_call/imi_snps_minmaf2_set1.pos -rf ./snp_call/imi_snps_minmaf2_set1.rf -out ./morph_divergence/banded_minmaf2_set1_unfolded -P 4
+
+# calculate joint SFS between banded and striped
+$ ~/install/angsd/misc/realSFS ./morph_divergence/banded_minmaf2_set1_unfolded.saf.idx ./morph_divergence/striped_minmaf2_set1_unfolded.saf.idx > ./morph_divergence/banded_striped_minmaf2_set1_unfolded.2dsfs
+
+# calculate allele frequency for sites segregating between striped and banded
+
+$ ~/install/angsd/angsd -bam /space/s1/linderoth/imitator/spades/imitator_striped_bams.txt -GL 1 -doMaf 1 -doMajorMinor 3 -minQ 20 -minMapQ 20 -sites ./snp_call/imi_divergence_snps_set1_alleles.pos -rf ./snp_call/imi_divergence_snps_set1.rf  -out ./morph_divergence/striped_divergence_set1
+
+$ ~/install/angsd/angsd -bam /space/s1/linderoth/imitator/spades/imitator_banded_bams.txt -GL 1 -doMaf 1 -doMajorMinor 3 -minQ 20 -minMapQ 20 -sites ./snp_call/imi_divergence_snps_set1_alleles.pos -rf ./snp_call/imi_divergence_snps_set1.rf  -out ./morph_divergence/banded_divergence_set1
+
+# combine allele frequencies into betaAFOutlier.R input format
+workdir='/space/s2/diana/Rimitator/sites_290421/morph_divergence'
+$ { printf "%s\t%s\t%s\t%s\n" "chr" "pos" "banded" "striped" & paste <(zcat banded_divergence_set1.mafs.gz | cut -f1,2,5 | tail -n+2 ) <(zcat striped_divergence_set1.mafs.gz | cut -f5 | tail -n+2 ); } > combined_divergence_set1.freq
+
+# calculate Fst
+$ ~/install/angsd/misc/realSFS fst index ./morph_divergence/banded_minmaf2_set1_unfolded.saf.idx ./morph_divergence/striped_minmaf2_set1_unfolded.saf.idx -sfs ./morph_divergence/banded_striped_minmaf2_set1_unfolded.2dsfs -fstout ./morph_divergence/banded_striped_minmaf2_set1_unfolded
+
+# test for significant allelic divergence between striped and banded
+
+$ ~/install/angsd/misc/realSFS fst stats ./morph_divergence/banded_striped_minmaf2_set1_unfolded.fst.idx
+# Fst.Weight:0.171011
+
+# calculate p and q values for allele frequency differences between banded and striped morphs
+workdir='/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_17092020/morph_divergence'
+
+$ ~/install/PopGenomicsTools/betaAFOutlier.R 33,33 0.171011 combined_divergence_set1.freq combined_divergence_set1 --plotqq
+# seed: 769821472
+# the above test uses genome-wide Fst calculated with ANGSD and is likely most accurate. These are the divergence p-values combined
+# with admixture test results.
+
+$ ~/install/PopGenomicsTools/betaAFOutlier.R 33,33 9 combined_divergence_set1.freq combined_divergence_set1_fst --plotqq --seed 769821472
+# FST: 0.1675491 
+
+# recalculate q-values with contig8307_combined (putative arg2) and mitochondrial loci excluded. This removes 15 sites.
+x <- read.table('/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/morph_divergence/combined_divergence_set1.sigtest',head=TRUE)
+x2 <- x[-which(x$chr == "contig8307_combined" | x$chr == "contig13298_combined_CYTB"),]
+x2$qval <- p.adjust(p=x2$pval, method="fdr")
+x2.sort <- x2[order(x2$pval,-x2$diff),]
+
+write.table(x2.sort,file='/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/morph_divergence/combined_divergence_set1.sigtest.sort',col.names=TRUE,row.names=FALSE,sep="\t",quote=FALSE)
+
+write.table(head(x2.sort,n=20),file='/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/morph_divergence/combined_divergence_set1.sigtest.top20',col.names=TRUE,row.names=FALSE,sep="\t",quote=FALSE)
+
+## GWAS
+
+# pattern rotation run1: Setting -minHigh 5 effectively requires 15/116 = 13% MAF, while -minCount 6 ensures a MAF of 5%
+$ ~/install/angsd/angsd -bam /space/s1/linderoth/imitator/spades/imitator_admixed_bams.txt -doAsso 2 -model 1 -GL 1 -doPost 1 -doMaf 1 -doMajorMinor 1 -minQ 20 -minMapQ 20 -minHigh 5 -minCount 6 -yQuant ./gwas/admix/admix_pattern_rotation_response.txt -cov ./gwas/admix/pattern_ancestryp_blackp_covariates.txt -sites ./snp_call/imi_admix_snps_minmaf5_set1.pos -rf ./snp_call/imi_admix_snps_minmaf5_set1.rf -out ./gwas/admix/output/pattern1 -P 4
+
+# dorsal body aValue color run1: Setting -minHigh 5 effectively requires 15/116 = 13% MAF, while -minCount 6 ensures a MAF of 5%
+$ ~/install/angsd/angsd -bam /space/s1/linderoth/imitator/spades/imitator_admixed_bams.txt -doAsso 2 -model 1 -GL 1 -doPost 1 -doMaf 1 -doMajorMinor 1 -minQ 20 -minMapQ 20 -minHigh 5 -minCount 6 -yQuant ./gwas/admix/admix_dorsal_aValue_response.txt -cov ./gwas/admix/dorsal_ancestryp_LValue_covariates.txt -sites ./snp_call/imi_admix_snps_minmaf5_set1.pos -rf ./snp_call/imi_admix_snps_minmaf5_set1.rf -out ./gwas/admix/output/dorsal_aValue1 -P 4
+
+# leg aValue color run1: Setting -minHigh 5 effectively requires 15/116 = 13% MAF, while -minCount 6 ensures a MAF of 5%
+$ ~/install/angsd/angsd -bam /space/s1/linderoth/imitator/spades/imitator_admixed_bams.txt -doAsso 2 -model 1 -GL 1 -doPost 1 -doMaf 1 -doMajorMinor 1 -minQ 20 -minMapQ 20 -minHigh 5 -minCount 6 -yQuant ./gwas/admix/admix_leg_aValue_response.txt -cov ./gwas/admix/leg_ancestryp_LValue_covariates.txt -sites ./snp_call/imi_admix_snps_minmaf5_set1.pos -rf ./snp_call/imi_admix_snps_minmaf5_set1.rf -out ./gwas/admix/output/leg_aValue1 -P 4
+
+# black proportion run1: Setting -minHigh 5 effectively requires 15/116 = 13% MAF, while -minCount 6 ensures a MAF of 5%
+$ ~/install/angsd/angsd -bam /space/s1/linderoth/imitator/spades/imitator_admixed_bams.txt -doAsso 2 -model 1 -GL 1 -doPost 1 -doMaf 1 -doMajorMinor 1 -minQ 20 -minMapQ 20 -minHigh 5 -minCount 6 -yQuant ./gwas/admix/admix_black_proportion_response.txt -cov ./gwas/admix/band_ancestry_proportion_minmaf2_set2_k2.txt -sites ./snp_call/imi_admix_snps_minmaf5_set1.pos -rf ./snp_call/imi_admix_snps_minmaf5_set1.rf -out ./gwas/admix/output/black_proportion1 -P 4
+
+## COMBINED DIVERGENE/ADMIXTURE GWAS
+workdir='/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/gwas/combined'
+
+# Combine p-values from betaAFOutlier and ANGSD -doAsso 2 using Fisher's method
+
+R
+library(MASS)
+
+chifit <- function(par, x) {
+        # par[1] = df
+        llh <- dchisq(x, df=par[1])
+        llh <- replace(llh, llh==0, .Machine$double.xmin)
+        llh <- replace(llh, llh==Inf, .Machine$double.xmax)
+        -sum(log(llh))
+}
+
+noncentral_chifit <- function(par, k, x) {
+        # par[1] = ncp
+        llh <- dchisq(x, df=k, ncp=par[1])
+        llh <- replace(llh, llh==0, .Machine$double.xmin)
+	llh <- replace(llh, llh==Inf, .Machine$double.xmax)
+        -sum(log(llh))
+}
+
+div <- read.table('/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/morph_divergence/combined_divergence_set1.sigtest',head=TRUE) # betaAFOutlier divergence results
+# 266,959 sites in divergence test
+# generae qq-plot of divergence test p-values
+p.div.exp <- ppoints(nrow(div))
+maxdiv <- max(c(-log10(p.div.exp), -log10(div$pval))) + 0.1
+png(file='/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/morph_divergence/combined_divergence_set1_sigtest_qqplot.png',width=800,height=800,res=150)
+par(mar=c(5,5,6,5))
+plot(sort(-log10(p.div.exp)), sort(-log10(div$pval)), xlab=expression("-log"[10]*"(expected p-value)"), ylab=expression("-log"[10]*"(observed p-value)"), 
+main="",cex.axis=1.3, cex.lab=1.3, xlim=c(0,maxdiv), ylim=c(0,maxdiv))
+text(x=maxdiv/2, y=maxdiv+0.55,labels="Morph Divergence", xpd=TRUE, cex=1.3)
+abline(0,1,col="red",lty=2)
+dev.off()
+
+# pattern
+
+pattern <- read.table('/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/gwas/admix/output/pattern1.lrt0',head=TRUE) # pattern rotation score
+pattern = pattern[-which(pattern$LRT == -999),] # remove excluded sites
+# 160,294 non-missing sites for pattern test
+pattern$pval.admix = pchisq(pattern$LRT,df=1,lower.tail=FALSE) # calculate p-value
+# make qq-plot of p-values
+#p.expected.det.pat1 = seq(from=1/(nrow(pattern)+1), to=1, length.out = nrow(pattern))
+p.expected.dat.pat1 = ppoints(nrow(pattern))
+png(file='/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/gwas/admix/output/pattern1_qq.png',width=800,height=800,res=150)
+par(mar=c(5,5,6,5))
+maxpat <- max(c(-log10(p.expected.det.pat1), -log10(pattern$pval.admix))) + 0.1
+plot(sort(-log10(p.expected.det.pat1)), sort(-log10(pattern$pval.admix)), xlab=expression("-log"[10]*"(expected p-value)"), ylab=expression("-log"[10]*"(observed p-value)"),
+main="", cex.axis=1.3, cex.lab=1.3, xlim=c(0,maxpat), ylim=c(0,maxpat))
+text(x=maxpat/2, y=maxpat+0.45, labels="Pattern Rotation", xpd=TRUE, cex=1.3)
+abline(0,1, col="red",lty=2)
+dev.off()
+
+# get intersection of divergence and admixed sites
+div_sub = div[-which((paste0(div$chr,div$pos) %in% paste0(pattern$Chromosome,pattern$Position) == FALSE)),]
+pattern_sub = pattern[-which((paste0(pattern$Chromosome,pattern$Position) %in% paste0(div_sub$chr,div_sub$pos) == FALSE)),]
+# make sure ordering is the same
+pattern_sub=pattern_sub[match(paste0(div_sub$chr,div_sub$pos), paste0(pattern_sub$Chromosome,pattern_sub$Position)),]
+# combine divergence and admixed into one data.frame
+divpat.combined = cbind(div_sub,pattern_sub[,3:ncol(pattern_sub)])
+
+# calculate combined p-value statistic (X2)
+divpat.combined$X2 = -2*(log(divpat.combined$pval) + log(divpat.combined$pval.admix))
+divpat.combined$X2.pval = pchisq(divpat.combined$X2, df=4, lower.tail=FALSE)
+
+# fit degrees of freedom as a genomic control - UPDATE 05/07/21: Fitting degrees of freedom rather than the noncentrality parameter seems to provide a better fit (see qq plots)
+divpat.df.fit <- fitdistr(divpat.combined$X2,"chi-squared", start=list(df=4), method="L-BFGS-B", lower=1)$estimate # fit degrees of freedom
+divpat.combined$X2.pval.gc = pchisq(divpat.combined$X2, df=divpat.df.fit, lower.tail=FALSE)
+
+# fit noncentrality parameter as a genomic control
+#divpat.ncp.fit <- optim(par=0, fn = noncentral_chifit, method = "L-BFGS-B", lower=0, k=4, x=divpat.combined$X2)$par
+#divpat.combined$X2.pval.gc = pchisq(divpat.combined$X2, df=4, ncp=divpat.ncp.fit, lower.tail=FALSE)
+
+# restructure data frame for readability
+divpat.combined = divpat.combined[,c(1,2,8,9,15,16,17,3,4,5,6,13,14)]
+colnames(divpat.combined) = c("chr","pos","major","minor","X2","X2.pval","X2.pval.gc","pop1f","pop2f","freqdiff","freqdiff.pval","high_WT.HE.HO", "admix.pval")
+
+# p-value qqplot
+#p.expected.det.pat2 = seq(from=1/(nrow(divpat.combined)+1), to=1, length.out = nrow(divpat.combined))
+p.expected.det.pat2 = ppoints(nrow(divpat.combined))
+png(file='/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/gwas/combined/pattern1_combined_qq_df4.png',width=800,height=800,res=150)
+maxpat2 <- max(c(-log10(p.expected.det.pat2), -log10(divpat.combined$X2.pval))) + 0.1
+par(mar=c(5,5,6,5))
+plot(sort(-log10(p.expected.det.pat2)), sort(-log10(divpat.combined$X2.pval)), xlab=expression("-log"[10]*"(expected p-value)"), ylab=expression("-log"[10]*"(observed p-value)"), 
+main="", cex.axis=1.3, cex.lab=1.3, xlim=c(0,maxpat2), ylim=c(0,maxpat2)) # divergence + pattern, chi-square(df=4)
+text(x=maxpat2/2, y=maxpat2+0.53, labels="Divergence x Pattern Rotation", xpd=TRUE, cex=1.3)
+abline(0,1, col="red",lty=2)
+dev.off()
+
+png(file='/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/gwas/combined/pattern1_combined_qq_df_fit.png',width=800,height=800,res=150)
+maxpat3 = max(c(-log10(p.expected.det.pat2), -log10(divpat.combined$X2.pval.gc))) + 0.1
+par(mar=c(5,5,6,5))
+plot(sort(-log10(p.expected.det.pat2)), sort(-log10(divpat.combined$X2.pval.gc)), xlab=expression("-log"[10]*"(expected p-value)"), ylab=expression("-log"[10]*"(observed p-value)"), 
+main="", cex.axis=1.3, cex.lab=1.3, xlim=c(0,maxpat3), ylim=c(0,maxpat3)) # divergence + pattern, chi-square(df=4.943168)
+text(x=maxpat3/2, y=maxpat3+0.55, labels=paste("Divergence x Pattern Rotation, df = ",round(divpat.df.fit,2),sep=""), xpd=TRUE, cex=1.3)
+abline(0,1, col="red",lty=2)
+dev.off()
+
+#png(file='/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/gwas/combined//pattern1_combined_qq_ncp_fit.png')
+#par(mar=c(5,5,6,5))
+#plot(sort(-log10(p.expected.det.pat2)), sort(-log10(divpat.combined$X2.pval.gc)), xlab='-log10(unif[0,1])', ylab='-log10(obs p-value)', 
+#main=paste0("Divergence + Pattern1, chi-square(df=4, ncp=",divpat.ncp.fit,")"), cex.axis=1.7, cex.lab=1.7)
+#abline(0,1, col="red",lty=2)
+#dev.off()
+
+# write results
+divpat.sort = divpat.combined[order(divpat.combined$X2.pval),]
+write.table(divpat.sort,file='/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/gwas/combined/pattern_combined.txt.sort',col.names=TRUE,row.names=FALSE,sep="\t",quote=FALSE)
+write.table(divpat.combined,file='/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/gwas/combined/pattern_combined.txt',col.names=TRUE,row.names=FALSE,sep="\t",quote=FALSE)
+
+# leg color A
+
+leg <- read.table('/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/gwas/admix/output/leg_aValue1.lrt0',head=TRUE) # leg color along red/green axis
+leg = leg[-which(leg$LRT == -999),] # remove excluded sites
+# 160,294 non-missing sites for leg color test
+leg$pval.admix = pchisq(leg$LRT,df=1,lower.tail=FALSE) # calculate p-value
+# make qq-plot of p-values
+p.expected.det.leg1 = ppoints(nrow(leg))
+#p.expected.det.leg1 = seq(from=1/(nrow(leg)+1), to=1, length.out = nrow(leg))
+png(file='/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/gwas/admix/output/leg_aValue1_qq.png', width=800, height=800, res=150)
+maxleg = max(c(-log10(p.expected.det.leg1), -log10(leg$pval.admix))) + 0.1
+par(mar=c(5,5,6,5))
+plot(sort(-log10(p.expected.det.leg1)), sort(-log10(leg$pval.admix)), xlab=expression("-log"[10]*"(expected p-value)"), ylab=expression("-log"[10]*"(observed p-value)"), 
+main="", cex.axis=1.3, cex.lab=1.3, xlim=c(0,maxleg), ylim=c(0,maxleg))
+text(x=maxleg/2, y=maxleg+0.55, labels="Leg a*", xpd=TRUE, cex=1.3)
+abline(0,1, col="red",lty=2)
+dev.off()
+
+# get intersection of divergence and admixed sites
+div_sub = div[-which((paste0(div$chr,div$pos) %in% paste0(leg$Chromosome,leg$Position) == FALSE)),]
+leg_sub = leg[-which((paste0(leg$Chromosome,leg$Position) %in% paste0(div_sub$chr,div_sub$pos) == FALSE)),]
+# make sure ordering is the same
+leg_sub=leg_sub[match(paste0(div_sub$chr,div_sub$pos), paste0(leg_sub$Chromosome,leg_sub$Position)),]
+# combine divergence and admixed into one data.frame
+divleg.combined = cbind(div_sub,leg_sub[,3:ncol(leg_sub)])
+
+# calculate combined p-value statistic (X2)
+divleg.combined$X2 = -2*(log(divleg.combined$pval) + log(divleg.combined$pval.admix))
+divleg.combined$X2.pval = pchisq(divleg.combined$X2, df=4, lower.tail=FALSE)
+# fit degrees of freedom as a genomic control
+divleg.df.fit <- fitdistr(divleg.combined$X2,"chi-squared", start=list(df=4), method="L-BFGS-B", lower=1)$estimate # fit degrees of freedom
+divleg.combined$X2.pval.gc = pchisq(divleg.combined$X2, df=divleg.df.fit, lower.tail=FALSE)
+
+# restructure data frame for readability
+divleg.combined = divleg.combined[,c(1,2,8,9,15,16,17,3,4,5,6,13,14)]
+colnames(divleg.combined) = c("chr","pos","major","minor","X2","X2.pval","X2.pval.gc","pop1f","pop2f","freqdiff","freqdiff.pval","high_WT.HE.HO", "admix.pval")
+
+# p-value qqplot
+#p.expected.det.leg2 = seq(from=1/(nrow(divleg.combined)+1), to=1, length.out = nrow(divleg.combined))
+p.expected.det.leg2 = ppoints(nrow(divleg.combined))
+png(file='/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/gwas/combined/legA1_combined_qq_df4.png',width=800,height=800,res=150)
+maxleg2 = max(c(-log10(p.expected.det.leg2), -log10(divleg.combined$X2.pval))) + 0.1
+par(mar=c(5,5,6,5))
+plot(sort(-log10(p.expected.det.leg2)), sort(-log10(divleg.combined$X2.pval)), 
+xlab=expression("-log"[10]*"(expected p-value)"), ylab=expression("-log"[10]*"(observed p-value)"), 
+main="",cex.axis=1.3, cex.lab=1.3, xlim=c(0,maxleg2), ylim=c(0,maxleg2)) # divergence + leg a*, chi-square(df=4)
+text(x=maxleg2/2, y=maxleg2+0.55, labels="Divergence x Leg a*", xpd=TRUE, cex=1.3)
+abline(0,1, col="red",lty=2)
+dev.off()
+
+png(file='/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/gwas/combined/legA1_combined_qq_df_fit.png',width=800,height=800,res=150)
+maxleg3 = max(c(-log10(p.expected.det.leg2), -log10(divleg.combined$X2.pval.gc))) + 0.1
+par(mar=c(5,5,6,5))
+plot(sort(-log10(p.expected.det.leg2)), sort(-log10(divleg.combined$X2.pval.gc)), 
+xlab=expression("-log"[10]*"(expected p-value)"), ylab=expression("-log"[10]*"(observed p-value)"), 
+main="", cex.axis=1.3, cex.lab=1.3, xlim=c(0,maxleg3), ylim=c(0,maxleg3)) # divergence + leg a*, chi-square(df=4.966019)
+text(x=maxleg3/2, y=maxleg3+0.55, labels=paste("Divergence x Leg a*, df = ",round(divleg.df.fit,2),sep=""), xpd=TRUE, cex=1.3)
+abline(0,1, col="red",lty=2)
+dev.off()
+
+# write results
+divleg.sort = divleg.combined[order(divleg.combined$X2.pval),]
+write.table(divleg.sort,file='/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/gwas/combined/legA_combined.txt.sort',col.names=TRUE,row.names=FALSE,sep="\t",quote=FALSE)
+write.table(divleg.combined,file='/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/gwas/combined/legA_combined.txt',col.names=TRUE,row.names=FALSE,sep="\t",quote=FALSE)
+
+# dorsal color A
+
+dorsal <- read.table('/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/gwas/admix/output/dorsal_aValue1.lrt0',head=TRUE) # dorsal body color along red/green axis
+dorsal = dorsal[-which(dorsal$LRT == -999),] # remove excluded sites
+# 160,294 sites for dorsal color test
+dorsal$pval.admix = pchisq(dorsal$LRT,df=1,lower.tail=FALSE) # calculate p-value
+# make qq-plot of p-values
+#p.expected.det.dorsal1 = seq(from=1/(nrow(dorsal)+1), to=1, length.out = nrow(dorsal))
+p.expected.det.dorsal1 = ppoints(nrow(dorsal))
+png(file='/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/gwas/admix/output/dorsal_aValue1_qq.png',width=800,height=800,res=150)
+par(mar=c(5,5,6,5))
+maxdor = max(c(-log10(p.expected.det.dorsal1), -log10(dorsal$pval.admix))) + 0.1
+plot(sort(-log10(p.expected.det.dorsal1)), sort(-log10(dorsal$pval.admix)), 
+xlab=expression("-log"[10]*"(expected p-value)"), ylab=expression("-log"[10]*"(observed p-value)"), 
+main="", cex.axis=1.3, cex.lab=1.3, xlim=c(0,maxdor), ylim=c(0,maxdor))
+text(x=maxdor/2, y=maxdor+0.55, labels="Body Dorsum a*", xpd=TRUE, cex=1.3)
+abline(0,1, col="red",lty=2)
+dev.off()
+
+# get intersection of divergence and admixed sites
+div_sub = div[-which((paste0(div$chr,div$pos) %in% paste0(dorsal$Chromosome,dorsal$Position) == FALSE)),]
+dorsal_sub = dorsal[-which((paste0(dorsal$Chromosome,dorsal$Position) %in% paste0(div_sub$chr,div_sub$pos) == FALSE)),]
+# make sure ordering is the same
+dorsal_sub=dorsal_sub[match(paste0(div_sub$chr,div_sub$pos), paste0(dorsal_sub$Chromosome,dorsal_sub$Position)),]
+# combine divergence and admixed into one data.frame
+divdorsal.combined = cbind(div_sub,dorsal_sub[,3:ncol(dorsal_sub)])
+
+# calculate combined p-value statistic (X2)
+divdorsal.combined$X2 = -2*(log(divdorsal.combined$pval) + log(divdorsal.combined$pval.admix))
+divdorsal.combined$X2.pval = pchisq(divdorsal.combined$X2, df=4, lower.tail=FALSE)
+# fit degrees of freedom as a genomic control
+divdorsal.df.fit <- fitdistr(divdorsal.combined$X2,"chi-squared", start=list(df=4), method="L-BFGS-B", lower=1)$estimate # fit degrees of freedom
+divdorsal.combined$X2.pval.gc = pchisq(divdorsal.combined$X2, df=divdorsal.df.fit, lower.tail=FALSE)
+
+# restructure data frame for readability
+divdorsal.combined = divdorsal.combined[,c(1,2,8,9,15,16,17,3,4,5,6,13,14)]
+colnames(divdorsal.combined) = c("chr","pos","major","minor","X2","X2.pval","X2.pval.gc","pop1f","pop2f","freqdiff","freqdiff.pval","high_WT.HE.HO", "admix.pval")
+
+# p-value qqplot
+#p.expected.det.dorsal2 = seq(from=1/(nrow(divdorsal.combined)+1), to=1, length.out = nrow(divdorsal.combined))
+p.expected.det.dorsal2 = ppoints(nrow(divdorsal.combined))
+png(file='/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/gwas/combined/dorsalA1_combined_qq_df4.png',width=800,height=800,res=150)
+par(mar=c(5,5,6,5))
+maxdor2 = max(c(-log10(p.expected.det.dorsal2), -log10(divdorsal.combined$X2.pval))) + 0.1
+plot(sort(-log10(p.expected.det.dorsal2)), sort(-log10(divdorsal.combined$X2.pval)), xlab=expression("-log"[10]*"(expected p-value)"), ylab=expression("-log"[10]*"(observed p-value)"), 
+main="", cex.axis=1.3, cex.lab=1.3, xlim=c(0,maxdor2), ylim=c(0,maxdor2)) # divergence + dorsal a*, chi-square(df=4)
+text(x=maxdor2/2, y=maxdor2+0.55, labels="Divergence x Body Dorsum a*", xpd=TRUE, cex=1.3)
+abline(0,1, col="red",lty=2)
+dev.off()
+
+png(file='/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/gwas/combined/dorsalA1_combined_qq_df_fit.png',width=800,height=800,res=150)
+par(mar=c(5,5,6,5))
+maxdor3 = max(c(-log10(p.expected.det.dorsal2), -log10(divdorsal.combined$X2.pval.gc))) + 0.1
+plot(sort(-log10(p.expected.det.dorsal2)), sort(-log10(divdorsal.combined$X2.pval.gc)), xlab=expression("-log"[10]*"(expected p-value)"), ylab=expression("-log"[10]*"(observed p-value)"), 
+main="", cex.axis=1.3, cex.lab=1.3, xlim=c(0,maxdor3), ylim=c(0,maxdor3)) # divergence + dorsal a*, chi-square(df = 5.045873)
+text(x=maxdor3/2, y=maxdor3+0.55, labels=paste("Divergence x Body Dorsum a*, df = ",round(divdorsal.df.fit,2),sep=""), xpd=TRUE, cex=1.3)
+abline(0,1, col="red",lty=2)
+dev.off()
+
+# write results
+divdorsal.sort = divdorsal.combined[order(divdorsal.combined$X2.pval),]
+
+write.table(divdorsal.sort,file='/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/gwas/combined/dorsalA_combined.txt.sort',
+col.names=TRUE,row.names=FALSE,sep="\t",quote=FALSE)
+
+write.table(divdorsal.combined,file='/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/gwas/combined//dorsalA_combined.txt',
+col.names=TRUE,row.names=FALSE,sep="\t",quote=FALSE)
+
+## PHENOTYPIC VARIANCE EXPLAINED BY CANDIDATE GENOTYPES
+
+# Call genotypes at SNPs with high phenotype associations in either/or the combined and admixture tests 
+#workdir='/space/s2/diana/Rimitator/sites_17092020/genotypes'
+tilden_workdir='/space/s1/tyler/imitator/sites_290421/genotypes'
+
+#$ ~/install/angsd/angsd -bam /space/s1/linderoth/imitator/spades/imitator_admixed_bams.txt -GL 1 -doMajorMinor 1 -doMaf 1 -doGeno 2 -doPost 1 -postCutoff 0.95 -minQ 20 -minMapQ 20 -sites candidate_variance.pos -rf candidate_variance.rf -out admix_candidate_variance_genotypes -P 4
+
+$ angsd -bam /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/imitator_admix_bam_list.txt -GL 1 -doMajorMinor 1 -doMaf 1 -doGeno 8 -doPost 1 -minQ 20 -minMapQ 20 -sites candidate_variance.pos -rf candidate_variance.rf -out admix_candidate_variance_genotypes -P 4
+
+# combine genotypes, phenotypes, and admixture proportions
+workdir='/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/gwas/candidate_variance'
+
+# START R CODE
+R
+geno <- read.table('admix_candidate_variance_genotypes.geno',head=FALSE,sep="\t") # genotypes
+loci = paste0(geno$V1, "_", geno$V2)
+nind = (ncol(geno)-2)/3
+geno.mean = matrix(nrow=nrow(geno),ncol=nind)
+for (j in 1:nrow(geno)) {
+	snp = as.numeric(geno[j,3:ncol(geno)])
+	g = NULL
+	i=1
+	while (length(g) < nind) {
+		g = c(g, 1*snp[i+1] + 2*snp[i+2])
+		i = i+3
+	}
+	geno.mean[j,] = g
+}
+geno.mean = t(geno.mean)
+
+#geno[geno < 0] = NA # recode missing genotypes
+pattern <- read.table('../admix/admix_pattern_rotation_response.txt',head=FALSE) # pattern phenotype
+dorsal <- read.table('../admix/admix_dorsal_aValue_response.txt',head=FALSE) # dorsal color A phenotype
+leg <- read.table('../admix/admix_leg_aValue_response.txt',head=FALSE) # leg color A phenotype
+covariates <- read.table('../admix/pattern_ancestryp_blackp_covariates.txt',head=FALSE) # band ancestry proportion and black proportion
+covariates2 <- read.table('../admix/dorsal_ancestryp_LValue_covariates.txt',head=FALSE) # band ancestry proportion and dorsal L-value
+covariates3 <- read.table('../admix/leg_ancestryp_LValue_covariates.txt',head=FALSE) # band ancestry proportion and leg L-value
+dat = cbind(pattern, dorsal, leg, covariates, covariates2$V2, covariates3$V2 ,geno.mean)
+colnames(dat) = c("pattern","dorsalA","legA","band_ancestry","black_proportion", "dorsalL", "legL", loci)
+write.table(dat,file='candidate_geno_pheno_data.txt',col.names=TRUE,row.names=FALSE,quote=FALSE,sep="\t")
+# END R CODE
+
+R code used to calculate the variance explained by each SNP is in
+/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/gwas/candidate_variance/candidate_variance_explained.R
+the output of which is in 
+/home/tyler/Dropbox/research/imitator/demultiplex2/spades/round2/sites_290421/gwas/candidate_variance/candidate_variance_explained_table.txt
+
+### CANDIDATE GENE ALLELE FREQUENCES
+
+# calculate the alternate allele frequency in banded, striped, and admixed populations
+workdir='/space/s2/diana/Rimitator/sites_17092020/allele_frequencies'
+
+# band
+
+$ angsd -bam /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/imitator_banded_bams.txt -sites /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/candidate_gene_snps.pos -rf /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/candidate_gene_snps.rf -ref /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/ref/imi_combined_targetedAndflanking_geneid.fasta -GL 1 -doMaf 1 -doMajorMinor 4 -minQ 20 -minMapQ 20 -out /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/candidate_genes_band -P 4
+
+$ angsd -bam /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/imitator_striped_bams.txt -sites /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/candidate_gene_snps.pos -rf /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/candidate_gene_snps.rf -ref /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/ref/imi_combined_targetedAndflanking_geneid.fasta -GL 1 -doMaf 1 -doMajorMinor 4 -minQ 20 -minMapQ 20 -out /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/candidate_genes_stripe -P 4
+
+$ angsd -bam /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/imitator_admix_bam_list.txt -sites /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/candidate_gene_snps.pos -rf /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/candidate_gene_snps.rf -ref /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/ref/imi_combined_targetedAndflanking_geneid.fasta -GL 1 -doMaf 1 -doMajorMinor 4 -minQ 20 -minMapQ 20 -out /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/allele_frequencies/candidate_genes_admix -P 4
+
+### THETA (calculated only for the nuclear genome) ###
+
+workdir='/space/s1/tyler/imitator/sites_290421/theta'
+
+# set 1 (sites with no conditioning on model species coverage - reported these values in the manuscript)
+
+# band thetas (set 1)
+$ angsd -bam /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/imitator_banded_bams.txt -GL 1 -doSaf 1 -anc /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/ref/imi_combined_targetedAndflanking_geneid.fasta -minQ 20 -minMapQ 20 -sites ../imi_model_allsites_minmaf2_set1_nuclear.pos -rf ../imi_model_allsites_minmaf2_set1_nuclear.rf -out banded_set1_minmaf2perc_nuclear -P 4
+$ realSFS banded_set1_minmaf2perc_nuclear.saf.idx -fold 1 -P 4 > banded_set1_minmaf2perc_nuclear.sfs
+$ realSFS saf2theta banded_set1_minmaf2perc_nuclear.saf.idx -outname banded_set1_minmaf2perc_nuclear -sfs banded_set1_minmaf2perc_nuclear.sfs -fold 1
+# the following command produces per gene thetas
+$ thetaStat do_stat banded_set1_minmaf2perc_nuclear.thetas.idx
+# the following command calculates genome-wide estimates of theta
+$ thetaStat print banded_set1_minmaf2perc_nuclear.thetas.idx 2>/dev/null | ./globalTheta.pl > banded_set1_minmaf2perc_nuclear.thetas.genome
+
+# striped thetas (set 1)
+$ angsd -bam /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/imitator_striped_bams.txt -GL 1 -doSaf 1 -anc /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/ref/imi_combined_targetedAndflanking_geneid.fasta -minQ 20 -minMapQ 20 -sites ../imi_model_allsites_minmaf2_set1_nuclear.pos -rf ../imi_model_allsites_minmaf2_set1_nuclear.rf -out striped_set1_minmaf2perc_nuclear -P 4
+$ realSFS striped_set1_minmaf2perc_nuclear.saf.idx -fold 1 -P 4 > striped_set1_minmaf2perc_nuclear.sfs
+$ realSFS saf2theta striped_set1_minmaf2perc_nuclear.saf.idx -outname striped_set1_minmaf2perc_nuclear -sfs striped_set1_minmaf2perc_nuclear.sfs -fold 1
+$ thetaStat do_stat striped_set1_minmaf2perc_nuclear.thetas.idx
+$ thetaStat print striped_set1_minmaf2perc_nuclear.thetas.idx 2>/dev/null | ./globalTheta.pl > striped_set1_minmaf2perc_nuclear.thetas.genome
+
+# admixed thetas (set 1)
+$ angsd -bam /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/imitator_admix_bam_list.txt -GL 1 -doSaf 1 -anc /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/ref/imi_combined_targetedAndflanking_geneid.fasta -minQ 20 -minMapQ 20 -sites ../imi_model_allsites_minmaf2_set1_nuclear.pos -rf ../imi_model_allsites_minmaf2_set1_nuclear.rf -out admixed_set1_minmaf2perc_nuclear -P 4
+$ realSFS admixed_set1_minmaf2perc_nuclear.saf.idx -fold 1 -P 4 > admixed_set1_minmaf2perc_nuclear.sfs
+$ realSFS saf2theta admixed_set1_minmaf2perc_nuclear.saf.idx -outname admixed_set1_minmaf2perc_nuclear -sfs admixed_set1_minmaf2perc_nuclear.sfs -fold 1
+$ thetaStat do_stat admixed_set1_minmaf2perc_nuclear.thetas.idx
+$ thetaStat print admixed_set1_minmaf2perc_nuclear.thetas.idx 2>/dev/null | ./globalTheta.pl > admixed_set1_minmaf2perc_nuclear.thetas.genome
+
+# set 2 (sites where at least one model species individual had to have data)
+
+# band thetas (set 2)
+$ angsd -bam /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/imitator_banded_bams.txt -GL 1 -doSaf 1 -anc /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/ref/imi_combined_targetedAndflanking_geneid.fasta -minQ 20 -minMapQ 20 -sites ../imi_model_allsites_minmaf2_set2_nuclear.pos -rf ../imi_model_allsites_minmaf2_set2_nuclear.rf -out banded_set2_minmaf2perc_nuclear -P 4
+$ realSFS banded_set2_minmaf2perc_nuclear.saf.idx -fold 1 -P 4 > banded_set2_minmaf2perc_nuclear.sfs
+$ realSFS saf2theta banded_set2_minmaf2perc_nuclear.saf.idx -outname banded_set2_minmaf2perc_nuclear -sfs banded_set2_minmaf2perc_nuclear.sfs -fold 1
+$ thetaStat do_stat banded_set2_minmaf2perc_nuclear.thetas.idx
+$ thetaStat print banded_set2_minmaf2perc_nuclear.thetas.idx 2>/dev/null | ./globalTheta.pl > banded_set2_minmaf2perc_nuclear.thetas.genome
+
+# stripe thetas (set 2)
+$ angsd -bam /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/imitator_striped_bams.txt -GL 1 -doSaf 1 -anc /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/ref/imi_combined_targetedAndflanking_geneid.fasta -minQ 20 -minMapQ 20 -sites ../imi_model_allsites_minmaf2_set2_nuclear.pos -rf ../imi_model_allsites_minmaf2_set2_nuclear.rf -out striped_set2_minmaf2perc_nuclear -P 4
+$ realSFS striped_set2_minmaf2perc_nuclear.saf.idx -fold 1 -P 4 > striped_set2_minmaf2perc_nuclear.sfs
+$ realSFS saf2theta striped_set2_minmaf2perc_nuclear.saf.idx -outname striped_set2_minmaf2perc_nuclear -sfs striped_set2_minmaf2perc_nuclear.sfs -fold 1
+$ thetaStat do_stat striped_set2_minmaf2perc_nuclear.thetas.idx
+$ thetaStat print striped_set2_minmaf2perc_nuclear.thetas.idx 2>/dev/null | ./globalTheta.pl > striped_set2_minmaf2perc_nuclear.thetas.genome
+
+# admix theta (set 2)
+$ angsd -bam /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/imitator_admix_bam_list.txt -GL 1 -doSaf 1 -anc /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/ref/imi_combined_targetedAndflanking_geneid.fasta -minQ 20 -minMapQ 20 -sites ../imi_model_allsites_minmaf2_set2_nuclear.pos -rf ../imi_model_allsites_minmaf2_set2_nuclear.rf -out admixed_set2_minmaf2perc_nuclear -P 4
+$ realSFS admixed_set2_minmaf2perc_nuclear.saf.idx -fold 1 -P 4 > admixed_set2_minmaf2perc_nuclear.sfs
+$ realSFS saf2theta admixed_set2_minmaf2perc_nuclear.saf.idx -outname admixed_set2_minmaf2perc_nuclear -sfs admixed_set2_minmaf2perc_nuclear.sfs -fold 1
+$ thetaStat do_stat admixed_set2_minmaf2perc_nuclear.thetas.idx
+$ thetaStat print admixed_set2_minmaf2perc_nuclear.thetas.idx 2>/dev/null | ./globalTheta.pl > admixed_set2_minmaf2perc_nuclear.thetas.genome
+
+### PRIVATE SNPS ###
+
+tilden workdir='/space/s1/tyler/imitator/sites_290421/snp_call'
+
+R
+admix <- read.table('imi_admix_snps_set1.pos',head=FALSE)
+band  <- read.table('imi_band_snps_set1.pos',head=FALSE)
+stripe <- read.table('imi_stripe_snps_set1.pos',head=FALSE)
+
+admix$snp = as.character(paste0(admix$V1,"_",admix$V2))
+band$snp = as.character(paste0(band$V1,"_",band$V2))
+stripe$snp = as.character(paste0(stripe$V1,"_",stripe$V2))
+
+band.private = length(which(band$snp %in% stripe$snp == FALSE & band$snp %in% admix$snp == FALSE))
+#band.private
+#[1] 8835 <== number private banded SNPs (n = 33)
+
+stripe.private = length(which(stripe$snp %in% band$snp == FALSE & stripe$snp %in% admix$snp == FALSE))
+#stripe.private
+#[1] 20751 <== number private striped SNPs (n = 33)
+
+admix.private = length(which(admix$snp %in% band$snp == FALSE & admix$snp %in% stripe$snp == FALSE))
+#admix.private
+#[1] 25054 <== number private admixed SNPs (n = 58)
+
+### ZOOM_PLOT. DEPRECATED - THIS WAS NOT REDONE SINCE GENOME-BASED ANALYSES WERE SCRAPPED ### 
+
+# Extract gff3 for candidate scaffolds only (whole genome is too cumbersome to process)
+
+workdir='/media/external2/frog/imitator_genome'
+
+$ zgrep 'scaffold494     \|scaffold14944 \|scaffold38594 \|scaffold20033 \|scaffold6320  \|scaffold9137  \|scaffold1899  ' Ranitomeya_imitator.imitator_axolotlparameters.ctg.raconpolished.arcsscaff.rails$
+
+# convert gff3 to gft format since this is what plot_zoom takes
+workdir='/media/external2/frog/imitator_genome/candidate_scaffolds'
+R
+library(rtracklayer)
+imi_gff <- import('Ranitomeya_imitator.imitator_axolotlparameters.ctg.raconpolished.arcsscaff.rails.gapfilled2x.polished.arcs.functional.candidates.gff3')
+export(imi_gff,"Ranitomeya_imitator.imitator_axolotlparameters.ctg.raconpolished.arcsscaff.rails.gapfilled2x.polished.arcs.functional.candidates.gtf","gtf")
+
+# Generate plink inputs for LD calculation
+# Use hard called genotypes with Plink 1.9 as test
+# Plink 2 can parse VCF GP (a posterior probability per possible genotype, not phred scaled)
+# to compute allele dosage info 'dosage=GP'. This will be better but need to
+# calculuate GP from the PL field and add these GPs to the VCF.
+
+# make position file of sites in combined GWAS results
+tail -n+2 /space/s2/diana/Rimitator/sites_17092020/gwas/combined/pattern1_combined.txt | cut -f1,2 > /space/s2/diana/Rimitator/sites_17092020/gwas/combined/imi_gwas_combined.pos
+
+# make position file of SNPs in combined GWAS results that were in liftover
+tail -n+2 /space/s1/frog/imi_genome/exome_liftover2/pattern1_combined_lift.txt | cut -f3,4 > /space/s1/frog/imi_genome/exome_liftover2/imi_gwas_combined_lifted_snps.pos
+
+# make liftover position file of combined GWAS SNPs
+$ tail -n+2 /space/s1/frog/imi_genome/exome_liftover2/pattern1_combined_lift.txt | cut -f1,2,3,4 > /space/s1/frog/imi_genome/exome_liftover2/imi_gwas_combined_snps_liftover.txt
+
+workdir='/space/s2/diana/Rimitator/imitator_vcf'
+
+# subset out imitator samples at lifted GWAS SNPs from VCF
+$ bcftools view -S band_stripe_admix_imi_samples.txt -a -T /space/s1/frog/imi_genome/exome_liftover2/imi_gwas_combined_lifted_snps.pos imi_model_allsites_annotated2.vcf.gz | bcftools +fill-tags -- -t 'AN,AC,AF,MAF,AC_Hom,AC_Het,ExcHet' | bgzip > /media/external2/frog/imitator_genome/vcf/imi_gwas_combined_lifted_snps.vcf.gz
+
+# subset out only admixed imitator samples at lifted GWAS SNPs from VCF
+$ bcftools view -S admix_imi_samples.txt -a -T /space/s1/frog/imi_genome/exome_liftover2/imi_gwas_combined_lifted_snps.pos imi_model_allsites_annotated2.vcf.gz | bcftools +fill-tags -- -t 'AN,AC,AF,MAF,AC_Hom,AC_Het,ExcHet' | bgzip > /media/external2/frog/imitator_genome/vcf/admix_imi_gwas_combined_lifted_snps.vcf.gz
+
+# extract scaffold name and length info
+$ /space/s1/frog/imi_genome/exome_liftover2/fa2scaffolds.pl imitator_axolotlparameters.ctg.raconpolished.arcsscaff.rails.gapfilled2x.polished.arcs.fa > imitator_axolotlparameters.ctg.raconpolished.arcsscaff.rails.gapfilled2x.polished.arcs.scaffolds.txt
+
+# convert VCF positions into genome coordinates
+workdir='/media/external2/frog/imitator_genome/vcf'
+$ /space/s1/frog/imi_genome/exome_liftover2/liftVcf.pl /space/s1/frog/imi_genome/exome_liftover2/imi_gwas_combined_snps_liftover.txt ../imitator_axolotlparameters.ctg.raconpolished.arcsscaff.rails.gapfilled2x.polished.arcs.scaffolds.txt imi_gwas_combined_lifted_snps.vcf.gz | bgzip > imi_gwas_combined_snps_genome_coordinates.vcf.gz
+$ /space/s1/frog/imi_genome/exome_liftover2/liftVcf.pl /space/s1/frog/imi_genome/exome_liftover2/imi_gwas_combined_snps_liftover.txt ../imitator_axolotlparameters.ctg.raconpolished.arcsscaff.rails.gapfilled2x.polished.arcs.scaffolds.txt admix_imi_gwas_combined_lifted_snps.vcf.gz | bgzip > admix_imi_gwas_combined_snps_genome_coordinates.vcf.gz
+
+# sort genomic coordinate VCFs
+$ bcftools sort -O z imi_gwas_combined_snps_genome_coordinates.vcf.gz > imi_gwas_combined_snps_genome_coordinates.sorted.vcf.gz
+$ bcftools sort -O z admix_imi_gwas_combined_snps_genome_coordinates.vcf.gz > admix_imi_gwas_combined_snps_genome_coordinates.sorted.vcf.gz
+
+# index VCFs
+$ tabix -p vcf imi_gwas_combined_snps_genome_coordinates.sorted.vcf.gz
+$ tabix -p vcf admix_imi_gwas_combined_snps_genome_coordinates.sorted.vcf.gz
+
+# generate plink inputs from VCFs
+$ ~/install/plink --vcf imi_gwas_combined_snps_genome_coordinates.sorted.vcf.gz --make-bed --set-missing-var-ids @:# --allow-extra-chr --out imi_gwas_combined_snps_genome_coordinates
+$ ~/install/plink --vcf admix_imi_gwas_combined_snps_genome_coordinates.sorted.vcf.gz --make-bed --set-missing-var-ids @:# --allow-extra-chr --out admix_imi_gwas_combined_snps_genome_coordinates
+
+# run plot_zoom
+$ ~/install/plot_zoom/plot_zoom.sh --input /space/s1/frog/imi_genome/exome_liftover2/pattern1_combined_lift.txt --testcol 9 --plinkbed /media/external2/frog/imitator_genome/vcf/imi_gwas_combined_snps_genome_coordinates --annot /media/external2/frog/imitator_genome/candidate_scaffolds/Ranitomeya_imitator.imitator_axolotlparameters.ctg.raconpolished.arcsscaff.rails.gapfilled2x.polished.arcs.functional.candidates.gtf --outpref /space/s1/linderoth/imitator/spades/gwas/zoom_plot/scaffold494_mc1r --chrcol 1 --poscol 2 --fschr scaffold494 --fspos 33368 --window 1,1283717
+
+$ ~/install/plot_zoom/plot_zoom.sh --input /space/s1/frog/imi_genome/exome_liftover2/pattern1_combined_lift.txt --testcol 9 --plinkbed /media/external2/frog/imitator_genome/vcf/imi_gwas_combined_snps_genome_coordinates --annot /media/external2/frog/imitator_genome/candidate_scaffolds/Ranitomeya_imitator.imitator_axolotlparameters.ctg.raconpolished.arcsscaff.rails.gapfilled2x.polished.arcs.functional.candidates.gtf --outpref /space/s1/linderoth/imitator/spades/gwas/zoom_plot/scaffold14944_asip --chrcol 1 --poscol 2 --fschr scaffold14944 --fspos 17921 --window 1,119202
+
+$ ~/install/plot_zoom/plot_zoom.sh --input /space/s1/frog/imi_genome/exome_liftover2/pattern1_combined_lift.txt --testcol 9 --plinkbed /media/external2/frog/imitator_genome/vcf/imi_gwas_combined_snps_genome_coordinates --annot /media/external2/frog/imitator_genome/candidate_scaffolds/Ranitomeya_imitator.imitator_axolotlparameters.ctg.raconpolished.arcsscaff.rails.gapfilled2x.polished.arcs.functional.candidates.gtf --outpref /space/s1/linderoth/imitator/spades/gwas/zoom_plot/scaffold1899_retsat --chrcol 1 --poscol 2 --fschr scaffold1899 --fspos 307338 --window 1,378800
+
+### Pedigree data ###
+
+# check correlation between dorsum B2 and S1Y values across all individuals
+
+# dorsum correlations
+
+dorsum <- read.table('/home/tyler/Dropbox/research/imitator/sanger/pedigree/results/ped_dorsum.txt',head=TRUE,sep="\t")
+
+dorsum.b2 <- dorsum$B2[which(!is.na(dorsum$B2) & !is.na(dorsum$S1Y))]
+dorsum.s1y <- dorsum$S1Y[which(!is.na(dorsum$B2) & !is.na(dorsum$S1Y))]
+
+cor.test(x=dorsum.b2, y=dorsum.s1y, method="pearson")
+
+#	Pearson's product-moment correlation
+#
+#data:  dorsum.b2 and dorsum.s1y
+#t = 1.5781, df = 67, p-value = 0.1193
+#alternative hypothesis: true correlation is not equal to 0
+#95 percent confidence interval:
+# -0.04959873  0.40771728
+#sample estimates:
+#      cor 
+#0.1893042 
+
+# hindlim correlations
+
+leg <- read.table('/home/tyler/Dropbox/research/imitator/sanger/pedigree/results/ped_hindlimb.txt',head=TRUE,sep="\t")
+leg.b2 <- leg$B2[which(!is.na(leg$B2) & !is.na(leg$S1G))]
+leg.s1g <- leg$S1G[which(!is.na(leg$B2) & !is.na(leg$S1G))]
+
+cor.test(x=leg.b2, y=leg.s1g, method="pearson")
+
+#	Pearson's product-moment correlation
+#
+#data:  leg.b2 and leg.s1g
+#t = 4.239, df = 62, p-value = 7.599e-05
+#alternative hypothesis: true correlation is not equal to 0
+#95 percent confidence interval:
+# 0.2583195 0.6447157
+#sample estimates:
+#      cor 
+#0.4740292 
+
+### Target Stats ###
+
+# Target Size
+$ ~/Dropbox/code/capture_design/transcript_filter.pl TargetSize /home/tyler/Dropbox/research/imitator/TargetDesign/final_target/imitator_capture_target_final_nonredundant_isoform_removed.fasta --total --ignoreN --nmissing 40
+
+#total                       	28281490
+
+# Number unique genes
+$ grep -c ">" /home/tyler/Dropbox/research/imitator/TargetDesign/final_target/imitator_capture_target_final_nonredundant_isoform_removed.fasta
+
+#13265
+
+### Assembly Stats ###
+
+# Total nonmissing (excludes 'N') assembly length
+# command run on Tilden
+~/scripts/transcript_filter.pl TargetSize /space/s1/tyler/troutbuster_040620/linderoth_s1/imitator/spades/ref/assembly_stats/imi_combined_targetedAndflanking_geneid_all_contigs.fasta --total --ignoreN
+#total                                	76384710
