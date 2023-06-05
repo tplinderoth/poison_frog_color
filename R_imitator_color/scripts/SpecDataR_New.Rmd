@@ -1,0 +1,441 @@
+---
+title: "PAVO Analysis"
+output: html_notebook
+author: Emily White
+
+---
+
+```{r}
+#install.packages("pavo")
+```
+
+```{r}
+library("pavo")
+library("dplyr")
+library("anchors")
+library("ggplot2")
+library("gridExtra")
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "C:/Users/emmid/Desktop/Spec_Analysis/")
+```
+
+```{r}
+getwd()
+```
+
+
+Step 1: Organization and Processing
+
+```{r}
+#create a data frame that includes frog IDs and path to directory with spec data
+
+frog_dirs <- dir(path="SpecData", recursive=TRUE, include.dirs=TRUE, pattern= "(^\\d{1,}\\w{0,1}$)|(^..\\d$)")
+
+spec_dirs<- file.path("SpecData", frog_dirs)
+
+frog_IDs <- read.table(file.path("SpecData/Frog_IDs.txt"), header = TRUE, stringsAsFactors=FALSE)
+
+spec_dirs_IDs <- mutate(frog_IDs, path=spec_dirs)
+spec_dirs_IDs
+```
+
+```{r}
+#create a function to analyze and visualize spec data for each frog
+    dorsum_summary_total <- data.frame()
+    hindlimb_summary_total <- data.frame()
+    forelimb_summary_total <- data.frame()
+
+
+for (y in c(1:91)) 
+{
+  specs <- getspec(where=spec_dirs_IDs[y,2], ext='txt', lim=c(400,1041), subdir=TRUE, subdir.names=TRUE)
+  specs_graph <- explorespec(specs, ylim=c(0,50))
+  frog_ID <- spec_dirs_IDs[y,1]
+  #subset spec data for body region
+  #combine spec data within region and take the average
+  #apply LOESS smoothing, make neg values 0
+  #plot spectral curve
+  
+  specs_dorsum <- na.omit(subset(specs, subset=c("a", "b", "c", "d", "e", "f", "p", "q")))
+  count_dorsum <- (ncol(specs_dorsum)-1)
+  dorsum_agg <- aggspec(specs_dorsum, by=count_dorsum, FUN="mean")
+  dorsum_agg_smooth <- procspec(dorsum_agg, opt="smooth", fixneg="zero", span=0.15)
+  dorsum_summary <- summary(dorsum_agg_smooth, subset = c("B2","S1Y", "S1R","H1"), wlmin=450, wlmax=950)
+  dorsum_summary$Individual_ID <- frog_ID
+  dorsum_summary_total <- rbind(dorsum_summary_total, dorsum_summary)
+  if (count_dorsum > 1)
+  {
+    dorsum_agg_plot <- aggplot(specs_dorsum, by=count_dorsum, ylim=c(0,50), xlim=c(450,950))
+  }
+  if (count_dorsum == 1)
+  {
+    dorsum_agg_plot <- plot(specs_dorsum, ylim=c(0,50), xlim=c(450,950))
+  }  
+  
+  specs_hindlimb <- na.omit(subset(specs, subset=c("g","h")))
+  count_hindlimb <- (ncol(specs_hindlimb)-1)
+  if (count_hindlimb == 2) 
+  {
+    hindlimb_agg_plot <- aggplot(specs_hindlimb, by=count_hindlimb, ylim=c(0,50), xlim=c(450,950))
+    specs_hindlimb <- aggspec(specs_hindlimb, by=2, FUN="mean")
+  }
+  if (count_hindlimb == 2 || count_hindlimb == 1)
+  {
+    hindlimb_agg_smooth <- procspec(specs_hindlimb, opt="smooth", fixneg="zero", span=0.15)
+    hindlimb_summary <- summary(hindlimb_agg_smooth, subset = c("B2", "S1G", "S1R","H1"), wlmin=450, wlmax=950)
+    hindlimb_summary$Individual_ID <- frog_ID
+    hindlimb_summary_total <- rbind(hindlimb_summary_total, hindlimb_summary)
+  }
+  if (count_hindlimb == 1)
+  {
+    hindlimb_plot <- plot(specs_hindlimb, ylim=c(0,50), xlim=c(450,950))
+  }
+  
+  specs_forelimb <- na.omit(subset(specs, subset=c("n", "o")))
+  count_forelimb <- (ncol(specs_forelimb)-1)
+  if (count_forelimb == 2) 
+  {
+    forelimb_agg_plot <- aggplot(specs_forelimb, by=count_forelimb, ylim=c(0,50), xlim=c(450,950))
+    specs_forelimb <- aggspec(specs_forelimb, by=2, FUN="mean")
+  }
+  if (count_forelimb == 2 || count_forelimb == 1)
+  {
+    forelimb_agg_smooth <- procspec(specs_forelimb, opt="smooth", fixneg="zero", span=0.15)
+    forelimb_summary <- summary(forelimb_agg_smooth, subset = c("B2", "S1G", "S1R","H1"), wlmin=450, wlmax=950)
+    forelimb_summary$Individual_ID <- frog_ID
+    forelimb_summary_total <- rbind(forelimb_summary_total, forelimb_summary)
+  }
+    if (count_forelimb == 1)
+  {
+    forelimb_plot <- plot(specs_forelimb, ylim=c(0,50), xlim=c(450,950))
+  }
+}
+```
+
+```{r}
+    dorsum_summary_total
+    hindlimb_summary_total
+    forelimb_summary_total
+```
+
+```{r}
+write.table(dorsum_summary_total, file="Spec_Results/dorsum_summary.txt", sep="\t", row.names = FALSE, na="x", col.names = TRUE, quote=FALSE)
+write.table(hindlimb_summary_total, file="Spec_Results/hindlimb_summary.txt", sep="\t", row.names = FALSE, na="x", col.names = TRUE, quote=FALSE)
+```
+
+
+```{r}
+individual_key <- read.csv("SpecData/Individual_Key.csv")
+individual_key
+```
+
+
+```{r}
+pedigree_info <- read.csv("pedigree_info_new.csv", colClasses = "character")
+pedigree_info <- transform(pedigree_info, rotation_score = as.numeric(rotation_score))
+pedigree_info
+```
+
+```{r}
+ped_dorsum <- merge(pedigree_info, dorsum_summary_total, by.y="Individual_ID", no.dups=TRUE, all.x=TRUE)
+ped_dorsum <- ped_dorsum[,c(2,1,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18)]
+ped_dorsum
+
+ped_forelimb <- merge(pedigree_info, forelimb_summary_total, by.y="Individual_ID", no.dups=TRUE, all.x=TRUE)
+ped_forelimb <- ped_forelimb[,c(2,1,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18)]
+ped_forelimb
+
+ped_hindlimb <- merge(pedigree_info, hindlimb_summary_total, by.y="Individual_ID", no.dups=TRUE, all.x=TRUE)
+ped_hindlimb <- ped_hindlimb[,c(2,1,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18)]
+ped_hindlimb
+```
+
+Find average phenotypes for purebred individuals and input those values for purebred individuals with missing phenotypes
+```{r}
+Hu_dorsum <- ped_dorsum[1:3,(15:18)]
+Hu_dorsum_means <- as.data.frame(colMeans(Hu_dorsum, na.rm=TRUE))
+ped_dorsum[3,15:18]=Hu_dorsum_means[1:4,1]
+ped_dorsum
+
+Hu_forelimb <- ped_forelimb[1:3,(15:18)]
+Hu_forelimb_means <- as.data.frame(colMeans(Hu_forelimb, na.rm=TRUE))
+ped_forelimb[3,15:18]=Hu_forelimb_means[1:4,1]
+ped_forelimb
+
+Hu_hindlimb <- ped_hindlimb[1:3,(15:18)]
+Hu_hindlimb_means <- as.data.frame(colMeans(Hu_hindlimb, na.rm=TRUE))
+ped_hindlimb[3,15:18]=Hu_hindlimb_means[1:4,1]
+ped_hindlimb
+
+
+Sa_dorsum <- ped_dorsum[c(4,22,70),(14:18)]
+Sa_dorsum_means <- as.data.frame(colMeans(Sa_dorsum, na.rm=TRUE))
+ped_dorsum[70,14:18]=Sa_dorsum_means[1:5,1]
+ped_dorsum
+
+Sa_forelimb <- ped_forelimb[c(4,22,70),(14:18)]
+Sa_forelimb_means <- as.data.frame(colMeans(Sa_forelimb, na.rm=TRUE))
+ped_forelimb[70,14:18]=Sa_forelimb_means[1:5,1]
+ped_forelimb
+
+Sa_hindlimb <- ped_hindlimb[c(4,22,70),(14:18)]
+Sa_hindlimb_means <- as.data.frame(colMeans(Sa_hindlimb, na.rm=TRUE))
+ped_hindlimb[70,14:18]=Sa_hindlimb_means[1:5,1]
+ped_hindlimb
+
+```
+
+
+
+```{r}
+write.table(ped_dorsum, file="Spec_Results/Ped_Files/ped_dorsum.txt", sep="\t", row.names = FALSE, na="", col.names = TRUE, quote=FALSE)
+write.table(ped_forelimb, file="Spec_Results/Ped_Files/ped_forelimb.txt", sep="\t", row.names = FALSE, na="", col.names = TRUE, quote=FALSE)
+write.table(ped_hindlimb, file="Spec_Results/Ped_Files/ped_hindlimb.txt", sep="\t", row.names = FALSE, na="", col.names = TRUE, quote=FALSE)
+```
+
+Change IDs to numbers for easier Merlin analysis
+```{r}
+ped_dorsum_nums <- ped_dorsum
+for (y in c(1:88))
+{ped_dorsum_nums <- replace.value(ped_dorsum_nums, c("Individual_ID", "Parent_1", "Parent_2"), from=individual_key[y,1], to=individual_key[y,2])}
+```
+
+```{r}
+ped_forelimb_nums <- ped_forelimb
+for (y in c(1:88))
+{ped_forelimb_nums <- replace.value(ped_forelimb_nums, c("Individual_ID", "Parent_1", "Parent_2"), from=individual_key[y,1], to=individual_key[y,2])}
+```
+
+```{r}
+ped_hindlimb_nums <- ped_hindlimb
+for (y in c(1:88))
+{ped_hindlimb_nums <- replace.value(ped_hindlimb_nums, c("Individual_ID", "Parent_1", "Parent_2"), from=individual_key[y,1], to=individual_key[y,2])}
+```
+
+
+```{r}
+write.table(ped_dorsum_nums, file="Spec_Results/Ped_Files/ped_dorsum_all.txt", sep="\t", row.names = FALSE, na="x", col.names = FALSE, quote=FALSE)
+write.table(ped_forelimb_nums, file="Spec_Results/Ped_Files/ped_forelimb_all.txt", sep="\t", row.names = FALSE, na="x", col.names = FALSE, quote=FALSE)
+write.table(ped_hindlimb_nums, file="Spec_Results/Ped_Files/ped_hindlimb_all.txt", sep="\t", row.names = FALSE, na="x", col.names = FALSE, quote=FALSE)
+```
+
+
+
+Separate ASIP ped file and save
+```{r}
+ped_dorsum_asip <- subset(ped_dorsum_nums, select=c(Fam:asip2, rotation_score:H1))
+ped_dorsum_asip
+
+ped_forelimb_asip <- subset(ped_forelimb_nums, select=c(Fam:asip2, B2:H1))
+ped_forelimb_asip
+
+ped_hindlimb_asip <- subset(ped_hindlimb_nums, select=c(Fam:asip2, B2:H1))
+ped_hindlimb_asip
+```
+
+```{r}
+write.table(ped_dorsum_asip, file="Spec_Results/Ped_Files/ped_dorsum_asip.txt", sep="\t", row.names = FALSE, na="x", col.names = FALSE, quote=FALSE)
+write.table(ped_forelimb_asip, file="Spec_Results/Ped_Files/ped_forelimb_asip.txt", sep="\t", row.names = FALSE, na="x", col.names = FALSE, quote=FALSE)
+write.table(ped_hindlimb_asip, file="Spec_Results/Ped_Files/ped_hindlimb_asip.txt", sep="\t", row.names = FALSE, na="x", col.names = FALSE, quote=FALSE)
+```
+
+
+Separate mc1r ped file and save
+```{r}
+ped_dorsum_mc1r <- subset(ped_dorsum_nums, select= c(Fam:Sex,mc1r1:mc1r2, rotation_score:H1))
+ped_dorsum_mc1r
+
+ped_forelimb_mc1r <- subset(ped_forelimb_nums,select= c(Fam:Sex,mc1r1:mc1r2, B2:H1))
+ped_forelimb_mc1r
+
+ped_hindlimb_mc1r <- subset(ped_hindlimb_nums,select= c(Fam:Sex,mc1r1:mc1r2, B2:H1))
+ped_hindlimb_mc1r
+```
+
+```{r}
+write.table(ped_dorsum_mc1r, file="Spec_Results/Ped_Files/ped_dorsum_mc1r.txt", sep="\t", row.names = FALSE, na="x", col.names = FALSE, quote=FALSE)
+write.table(ped_forelimb_mc1r, file="Spec_Results/Ped_Files/ped_forelimb_mc1r.txt", sep="\t", row.names = FALSE, na="x", col.names = FALSE, quote=FALSE)
+write.table(ped_hindlimb_mc1r, file="Spec_Results/Ped_Files/ped_hindlimb_mc1r.txt", sep="\t", row.names = FALSE, na="x", col.names = FALSE, quote=FALSE)
+```
+
+
+Separate bsn2 ped file and save
+```{r}
+ped_dorsum_bsn2 <- subset(ped_dorsum_nums, select= c(Fam:Sex,bsn2.1:bsn2.2, rotation_score:H1))
+ped_dorsum_bsn2
+
+ped_forelimb_bsn2 <- subset(ped_forelimb_nums,select= c(Fam:Sex,bsn2.1:bsn2.2, B2:H1))
+ped_forelimb_bsn2
+
+ped_hindlimb_bsn2 <- subset(ped_hindlimb_nums,select= c(Fam:Sex,bsn2.1:bsn2.2, B2:H1))
+ped_hindlimb_bsn2
+```
+
+```{r}
+write.table(ped_dorsum_bsn2, file="Spec_Results/Ped_Files/ped_dorsum_bsn2.txt", sep="\t", row.names = FALSE, na="x", col.names = FALSE, quote=FALSE)
+write.table(ped_forelimb_bsn2, file="Spec_Results/Ped_Files/ped_forelimb_bsn2.txt", sep="\t", row.names = FALSE, na="x", col.names = FALSE, quote=FALSE)
+write.table(ped_hindlimb_bsn2, file="Spec_Results/Ped_Files/ped_hindlimb_bsn2.txt", sep="\t", row.names = FALSE, na="x", col.names = FALSE, quote=FALSE)
+```
+
+
+separate retsat ped file and save
+```{r}
+ped_dorsum_retsat <- subset(ped_dorsum_nums, select= c(Fam:Sex,retsat1:retsat2, rotation_score:H1))
+ped_dorsum_retsat
+
+ped_forelimb_retsat <- subset(ped_forelimb_nums, select= c(Fam:Sex,retsat1:retsat2, B2:H1))
+ped_forelimb_retsat
+
+ped_hindlimb_retsat <- subset(ped_hindlimb_nums, select= c(Fam:Sex,retsat1:retsat2, B2:H1))
+ped_hindlimb_retsat
+```
+
+```{r}
+write.table(ped_dorsum_retsat, file="Spec_Results/Ped_Files/ped_dorsum_retsat.txt", sep="\t", row.names = FALSE, na="x", col.names = FALSE, quote=FALSE)
+write.table(ped_forelimb_retsat, file="Spec_Results/Ped_Files/ped_forelimb_retsat.txt", sep="\t", row.names = FALSE, na="x", col.names = FALSE, quote=FALSE)
+write.table(ped_hindlimb_retsat, file="Spec_Results/Ped_Files/ped_hindlimb_retsat.txt", sep="\t", row.names = FALSE, na="x", col.names = FALSE, quote=FALSE)
+```
+
+```{r}
+ped_dorsum_asip$genotype <- paste(ped_dorsum_asip$asip1,ped_dorsum_asip$asip2)
+ped_dorsum_asip_new <- ped_dorsum_asip[ped_dorsum_asip$genotype!="x x",]
+asip_rot <- ggplot(data=ped_dorsum_asip_new) + geom_boxplot(mapping=aes(x=genotype, y=rotation_score)) + ggtitle("Asip: Rotation")
+```
+
+```{r}
+ped_dorsum_asip$genotype <- paste(ped_dorsum_asip$asip1,ped_dorsum_asip$asip2)
+ped_dorsum_asip_new <- ped_dorsum_asip[ped_dorsum_asip$genotype!="x x",]
+
+asip_B2 <- ggplot(data=ped_dorsum_asip_new) + geom_boxplot(mapping=aes(x=genotype, y=B2)) + ggtitle("Asip: Dorsal B2")
+```
+
+```{r}
+ped_dorsum_asip$genotype <- paste(ped_dorsum_asip$asip1,ped_dorsum_asip$asip2)
+ped_dorsum_asip_new <- ped_dorsum_asip[ped_dorsum_asip$genotype!="x x",]
+
+asip_S1R <- ggplot(data=ped_dorsum_asip_new) + geom_boxplot(mapping=aes(x=genotype, y=S1R)) + ggtitle("Asip: Dorsal S1R")
+```
+
+```{r}
+#png(file="C:/Users/emmid/Desktop/Research/Figures/asip_tables.png")
+grid.arrange(asip_rot, asip_B2, asip_S1R, nrow=2)
+#dev.off()
+```
+
+
+```{r}
+ped_dorsum_bsn2$genotype <- paste(ped_dorsum_bsn2$bsn2.1,ped_dorsum_bsn2$bsn2.2)
+ped_dorsum_bsn2_new <- ped_dorsum_bsn2[ped_dorsum_bsn2$genotype!="x x",]
+
+bsn2_rot <- ggplot(data=ped_dorsum_bsn2_new) + geom_boxplot(mapping=aes(x=genotype, y=rotation_score)) + ggtitle("Bsn: Rotation")
+```
+
+```{r}
+ped_hindlimb_bsn2$genotype <- paste(ped_dorsum_bsn2$bsn2.1,ped_hindlimb_bsn2$bsn2.2)
+ped_hindlimb_bsn2_new <- ped_hindlimb_bsn2[ped_hindlimb_bsn2$genotype!="x x",]
+bsn2_S1G <- ggplot(data=ped_hindlimb_bsn2_new) + geom_boxplot(mapping=aes(x=genotype, y=S1G)) + ggtitle("Bsn: Hindlimb S1G")
+```
+
+```{r}
+#png(file="C:/Users/emmid/Desktop/Research/Figures/bsn2_tables.png")
+grid.arrange(bsn2_rot, bsn2_S1G, ncol=2, widths=c(10,10), heights=c(10,10))
+#dev.off()
+```
+
+
+```{r}
+ped_dorsum_mc1r$genotype <- paste(ped_dorsum_mc1r$mc1r1,ped_dorsum_mc1r$mc1r2)
+ped_dorsum_mc1r_new <- ped_dorsum_mc1r[ped_dorsum_mc1r$genotype!="x x",]
+
+mc1r_rot <- ggplot(data=ped_dorsum_mc1r_new) + geom_boxplot(mapping=aes(x=genotype, y=rotation_score)) + ggtitle("Mc1r: Rotation")
+```
+
+```{r}
+ped_hindlimb_mc1r$genotype <- paste(ped_hindlimb_mc1r$mc1r1,ped_hindlimb_mc1r$mc1r2)
+ped_hindlimb_mc1r_new <- ped_hindlimb_mc1r[ped_hindlimb_mc1r$genotype!="x x",]
+
+mc1r_B2 <- ggplot(data=ped_hindlimb_mc1r_new) + geom_boxplot(mapping=aes(x=genotype, y=B2)) + ggtitle("Mc1r: Hindlimb B2")
+```
+
+```{r}
+ped_hindlimb_mc1r$genotype <- paste(ped_hindlimb_mc1r$mc1r1,ped_hindlimb_mc1r$mc1r2)
+ped_hindlimb_mc1r_new <- ped_hindlimb_mc1r[ped_hindlimb_mc1r$genotype!="x x",]
+
+mc1r_S1R <- ggplot(data=ped_hindlimb_mc1r_new) + geom_boxplot(mapping=aes(x=genotype, y=S1R)) + ggtitle("Mc1r: Hindlimb S1R")
+```
+
+```{r}
+ped_hindlimb_mc1r$genotype <- paste(ped_hindlimb_mc1r$mc1r1,ped_hindlimb_mc1r$mc1r2)
+ped_hindlimb_mc1r_new <- ped_hindlimb_mc1r[ped_hindlimb_mc1r$genotype!="x x",]
+
+mc1r_H1 <- ggplot(data=ped_hindlimb_mc1r_new) + geom_boxplot(mapping=aes(x=genotype, y=H1)) + ggtitle("Mc1r: Hindlimb Hue")
+```
+
+```{r}
+#png(file="C:/Users/emmid/Desktop/Research/Figures/mc1r_tables.png")
+grid.arrange(mc1r_rot, mc1r_B2, mc1r_S1R, nrow=2)
+#dev.off()
+```
+
+```{r}
+ped_dorsum_retsat$genotype <- paste(ped_dorsum_retsat$retsat1,ped_dorsum_retsat$retsat2)
+ped_dorsum_retsat_new <- ped_dorsum_retsat[ped_dorsum_retsat$genotype!="x x",]
+
+retsat_rot <- ggplot(data=ped_dorsum_retsat_new) + geom_boxplot(mapping=aes(x=genotype, y=rotation_score)) + ggtitle("Retsat: Rotation")
+```
+
+```{r}
+ped_dorsum_retsat$genotype <- paste(ped_dorsum_retsat$retsat1,ped_dorsum_retsat$retsat2)
+ped_dorsum_retsat_new <- ped_dorsum_retsat[ped_dorsum_retsat$genotype!="x x",]
+
+retsat_S1Y <- ggplot(data=ped_dorsum_retsat_new) + geom_boxplot(mapping=aes(x=genotype, y=S1Y)) + ggtitle("Retsat: Dorsal S1Y")
+```
+
+```{r}
+ped_dorsum_retsat$genotype <- paste(ped_dorsum_retsat$retsat1,ped_dorsum_retsat$retsat2)
+ped_dorsum_retsat_new <- ped_dorsum_retsat[ped_dorsum_retsat$genotype!="x x",]
+
+retsat_S1R <- ggplot(data=ped_dorsum_retsat_new) + geom_boxplot(mapping=aes(x=genotype, y=S1R))  + ggtitle("Retsat: Dorsal Red")
+```
+
+```{r}
+ped_dorsum_retsat$genotype <- paste(ped_dorsum_retsat$retsat1,ped_dorsum_retsat$retsat2)
+ped_dorsum_retsat_new <- ped_dorsum_retsat[ped_dorsum_retsat$genotype!="x x",]
+
+retsat_H1 <- ggplot(data=ped_dorsum_retsat_new) + geom_boxplot(mapping=aes(x=genotype, y=H1))  + ggtitle("Retsat: Dorsal Hue")
+```
+
+```{r}
+#png(file="C:/Users/emmid/Desktop/Research/Figures/retsat_tables.png")
+grid.arrange(retsat_rot, retsat_S1Y, retsat_H1, nrow=2)
+#dev.off()
+```
+
+```{r}
+png(file="C:/Users/emmid/Desktop/Research/Figures/boxplots.png")
+grid.arrange(asip_rot,asip_B2,bsn2_rot,mc1r_rot,mc1r_B2,retsat_rot,retsat_S1Y, ncol=3, widths=c(15,15,15))
+dev.off()
+```
+
+
+```{r}
+
+asip_B2_new <- ggplot(data=ped_dorsum_asip_new) + geom_boxplot(mapping=aes(x=genotype, y=B2))+xlab("Asip genotype")+ylab("Dorsal Coloration")+theme(text= element_text(size=20))
+asip_B2_new
+
+mc1r_rot_new <- ggplot(data=ped_dorsum_mc1r_new) + geom_boxplot(mapping=aes(x=genotype, y=rotation_score))+xlab("Mc1r genotype")+ylab("Dorsal Pattern")+theme(text= element_text(size=20))
+mc1r_rot_new
+
+png(file="C:/Users/emmid/Desktop/Research/Figures/asip_boxplot.png")
+asip_B2_new
+dev.off()
+
+png(file="C:/Users/emmid/Desktop/Research/Figures/mc1r_boxplot.png")
+mc1r_rot_new
+dev.off()
+```
+
+
